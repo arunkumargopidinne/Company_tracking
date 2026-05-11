@@ -1,0 +1,315 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  PLACEMENT_TEAM
+  STAKEHOLDER
+}
+
+enum CRM {
+  GOOGLE_SHEETS
+  HUBSPOT
+  ZOHO
+  LINKEDIN
+  MANUAL
+  OTHER
+}
+
+enum CompanyStatus {
+  UPCOMING
+  IN_PROGRESS
+  INTERVIEW_SCHEDULED
+  SELECTED
+  REJECTED_ALL
+  DROPPED
+  CLOSED
+}
+
+enum InterviewScheduleStatus {
+  NOT_SCHEDULED
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum ApplicationStage {
+  APPLIED
+  RESUME_SCREENING
+  TELEPHONIC_SCREENING
+  GROUP_DISCUSSION
+  ASSESSMENT_ROUND
+  ASSIGNMENT_ROUND
+  TECHNICAL_ROUND_1
+  TECHNICAL_ROUND_2
+  MANAGER_ROUND
+  HR_ROUND
+  SELECTED
+  REJECTED
+  DROPPED
+}
+
+enum RoundOutcome {
+  SELECTED
+  REJECTED
+  NOT_APPLICABLE
+  PENDING
+}
+
+enum BenchmarkStatus {
+  CLEARED
+  NOT_CLEARED
+  NOT_TAKEN
+}
+
+enum AssessmentStatus {
+  CLEARED
+  NOT_CLEARED
+  NOT_TAKEN
+}
+
+enum RemarkScope {
+  COMPANY
+  STUDENT
+  APPLICATION
+  RSA
+}
+
+enum SyncSource {
+  DASHBOARD
+  GOOGLE_SHEETS
+  MANUAL
+  SYSTEM
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  MOVE
+  REJECT
+  SELECT
+  DROP
+  SYNC
+  RSA_GENERATE
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  image     String?
+  role      Role     @default(PLACEMENT_TEAM)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  remarks  Remark[]
+  auditLog AuditLog[]
+}
+
+model Company {
+  id                       String                  @id @default(cuid())
+  name                     String
+  techStack                String[]
+  jdLink                   String?
+  rounds                   ApplicationStage[]
+  crm                      CRM                     @default(GOOGLE_SHEETS)
+  location                 String?
+  confirmationDate         DateTime?
+  interviewScheduledStatus InterviewScheduleStatus @default(NOT_SCHEDULED)
+  currentStatus            CompanyStatus           @default(UPCOMING)
+  remarks                  String?
+  sheetRowId               String?
+  createdAt                DateTime                @default(now())
+  updatedAt                DateTime                @updatedAt
+
+  jobDescriptions JobDescription[]
+  applications    Application[]
+  pipelineStages  PipelineStage[]
+  remarksLog      Remark[]
+  rsaReports      RSAReport[]
+  benchmarkResult BenchmarkResult[]
+  assessmentResult AssessmentResult[]
+}
+
+model Student {
+  id               String           @id @default(cuid())
+  studentId        String           @unique
+  name             String
+  email            String?          @unique
+  phone            String?
+  primaryStack     String[]
+  benchmarkStatus  BenchmarkStatus  @default(NOT_TAKEN)
+  assessmentStatus AssessmentStatus @default(NOT_TAKEN)
+  remarks          String?
+  sheetRowId        String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  applications     Application[]
+  remarksLog       Remark[]
+  benchmarkResults BenchmarkResult[]
+  assessmentResults AssessmentResult[]
+}
+
+model JobDescription {
+  id             String   @id @default(cuid())
+  companyId      String
+  title          String
+  details        String
+  expectedSkills String[]
+  sourceUrl      String?
+  uploadedAt     DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+}
+
+model Application {
+  id               String           @id @default(cuid())
+  companyId        String
+  studentId        String
+  currentStage     ApplicationStage @default(APPLIED)
+  currentOutcome   RoundOutcome     @default(PENDING)
+  remarks          String?
+  rejectedAtRound  ApplicationStage?
+  rejectionReason  String?
+  selectedRound    ApplicationStage?
+  selectedAt        DateTime?
+  droppedStage     ApplicationStage?
+  droppedReason    String?
+  sheetRowId        String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  company       Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  student       Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  roundStatuses RoundStatus[]
+  remarksLog    Remark[]
+  auditLog      AuditLog[]
+
+  @@unique([companyId, studentId])
+  @@index([companyId, currentStage])
+  @@index([studentId])
+}
+
+model PipelineStage {
+  id        String           @id @default(cuid())
+  companyId String
+  stage     ApplicationStage
+  sortOrder Int
+  active    Boolean          @default(true)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, stage])
+}
+
+model RoundStatus {
+  id              String           @id @default(cuid())
+  applicationId   String
+  stage           ApplicationStage
+  outcome         RoundOutcome     @default(PENDING)
+  remarks         String?
+  rejectionReason String?
+  selectedAt      DateTime?
+  changedAt       DateTime         @default(now())
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@unique([applicationId, stage])
+}
+
+model Remark {
+  id            String      @id @default(cuid())
+  scope         RemarkScope
+  content       String
+  source        SyncSource  @default(DASHBOARD)
+  companyId     String?
+  studentId     String?
+  applicationId String?
+  authorId      String?
+  createdAt     DateTime    @default(now())
+
+  company     Company?     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  student     Student?     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  application Application? @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  author      User?        @relation(fields: [authorId], references: [id], onDelete: SetNull)
+}
+
+model RSAReport {
+  id                         String   @id @default(cuid())
+  companyId                  String
+  adminRemarks               String?
+  aiSummary                  String?
+  hiringSummary              String?
+  studentPerformanceSummary  String?
+  roundWiseRejectionAnalysis String?
+  selectionAnalysis          String?
+  skillGapAnalysis           String?
+  benchmarkingAnalysis       String?
+  assessmentAnalysis         String?
+  improvementSuggestions     String?
+  sourceSheetRowId           String?
+  generatedAt                DateTime?
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+}
+
+model BenchmarkResult {
+  id         String          @id @default(cuid())
+  studentId  String
+  companyId  String?
+  status     BenchmarkStatus
+  score      Float?
+  remarks    String?
+  assessedAt DateTime        @default(now())
+
+  student Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  company Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+}
+
+model AssessmentResult {
+  id         String           @id @default(cuid())
+  studentId  String
+  companyId  String?
+  status     AssessmentStatus
+  score      Float?
+  remarks    String?
+  assessedAt DateTime         @default(now())
+
+  student Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  company Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+}
+
+model AuditLog {
+  id            String      @id @default(cuid())
+  actorId       String?
+  entityType    String
+  entityId      String
+  action        AuditAction
+  before        Json?
+  after         Json?
+  message       String
+  applicationId String?
+  createdAt     DateTime    @default(now())
+
+  actor       User?        @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  application Application? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
