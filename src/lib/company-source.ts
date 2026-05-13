@@ -37,7 +37,18 @@ type SheetCompanyRead = {
   companies: Company[];
 };
 
+const COMPANY_CACHE_TTL_MS = 30_000;
+let companySheetCache: { value: SheetCompanyRead; expiresAt: number } | null = null;
+
+export function invalidateCompanyCache() {
+  companySheetCache = null;
+}
+
 async function getCompaniesFromSheet(): Promise<SheetCompanyRead> {
+  if (companySheetCache && companySheetCache.expiresAt > Date.now()) {
+    return companySheetCache.value;
+  }
+
   const result = await readSheetRows({ range: getCompanyTrackingRange() });
 
   if (result.skipped || result.values.length <= 1) {
@@ -46,11 +57,13 @@ async function getCompaniesFromSheet(): Promise<SheetCompanyRead> {
       reason: result.reason,
       valueCount: result.values.length,
     });
-    return {
+    const value = {
       skipped: result.skipped,
       reason: result.reason,
       companies: [],
     };
+    companySheetCache = { value, expiresAt: Date.now() + COMPANY_CACHE_TTL_MS };
+    return value;
   }
 
   console.log("[Company Source] Read rows from sheet", {
@@ -83,10 +96,12 @@ async function getCompaniesFromSheet(): Promise<SheetCompanyRead> {
     invalidRows: result.values.length - 1 - companies.length,
   });
 
-  return {
+  const value = {
     skipped: false,
     companies,
   };
+  companySheetCache = { value, expiresAt: Date.now() + COMPANY_CACHE_TTL_MS };
+  return value;
 }
 
 function sheetRowToCompany(row: string[], rowNumber: number): Company | null {
@@ -118,15 +133,17 @@ function sheetRowToCompany(row: string[], rowNumber: number): Company | null {
   const actualRemarks = parsed?.remarks || stripGeneratedSummary(remarks);
   const parsedLocation = parsed?.location || "";
 
-  console.log("[Sheet Row To Company] Processing row", rowNumber, ":", {
-    providedName: name,
-    parsedName: parsed?.companyName,
-    finalName: companyName,
-    companyId,
-    hasJd: !!jd,
-    jdLength: jd?.length,
-    parserErrors: parsedValidation,
-  });
+  if (process.env.DEBUG_SHEET_ROWS === "1") {
+    console.log("[Sheet Row To Company] Processing row", rowNumber, ":", {
+      providedName: name,
+      parsedName: parsed?.companyName,
+      finalName: companyName,
+      companyId,
+      hasJd: !!jd,
+      jdLength: jd?.length,
+      parserErrors: parsedValidation,
+    });
+  }
 
   if (!isValidCompanyName(companyName)) {
     console.warn("[Sheet Row To Company] Row", rowNumber, "filtered out - no valid company name");
@@ -193,10 +210,12 @@ export async function createNextCompanyId() {
 }
 
 export async function deleteCompanyFromSheet(rowNumber: number) {
-  return deleteSheetRows({
+  const result = await deleteSheetRows({
     sheetTitle: getCompanyTrackingRange().split("!")[0].replace(/^'|'$/g, ""),
     rowNumbers: [rowNumber],
   });
+  invalidateCompanyCache();
+  return result;
 }
 
 export type CompanySheetUpdateInput = {
@@ -251,7 +270,7 @@ export async function updateCompanyInSheet(input: CompanySheetUpdateInput) {
     status: input.currentStatus,
   });
 
-  return updateSheetRow({
+  const result = await updateSheetRow({
     sheetTitle: getCompanySheetTitle(),
     rowNumber: input.rowNumber,
     startColumn: "A",
@@ -269,6 +288,8 @@ export async function updateCompanyInSheet(input: CompanySheetUpdateInput) {
       input.remarks || "",
     ],
   });
+  invalidateCompanyCache();
+  return result;
 }
 
 export async function updateCompanyStatusInSheet(
@@ -293,12 +314,14 @@ export async function updateCompanyStatusInSheet(
     status,
   });
 
-  return updateSheetRow({
+  const result = await updateSheetRow({
     sheetTitle: getCompanySheetTitle(),
     rowNumber: company.sheetRowNumber,
     startColumn: "J",
     values: [status],
   });
+  invalidateCompanyCache();
+  return result;
 }
 
 function normalizeRounds(value: string): PipelineStageId[] {

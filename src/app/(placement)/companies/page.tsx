@@ -6,14 +6,20 @@ import {
   getApplicationSummariesByCompany,
 } from "@/lib/application-source";
 import { getCompaniesForDashboard } from "@/lib/company-source";
+import { getCurrentSessionUser, isReadOnlyRole } from "@/lib/rbac";
 
 export const dynamic = "force-dynamic";
 
 export default async function CompaniesPage() {
-  const companies = await getCompaniesForDashboard();
+  const [companies, summaryEntries, sessionUser] = await Promise.all([
+    getCompaniesForDashboard(),
+    getApplicationSummariesByCompany(),
+    getCurrentSessionUser(),
+  ]);
   const summaries = Object.fromEntries(
-    await getApplicationSummariesByCompany(),
+    summaryEntries,
   ) as Record<string, ApplicationSummary>;
+  const readOnly = isReadOnlyRole(sessionUser?.role);
 
   console.log("[Company Dashboard] Rendering companies", {
     companyCount: companies.length,
@@ -25,10 +31,10 @@ export default async function CompaniesPage() {
       <PageHeader
         title="Company Pipelines"
         description="Track every JD from upload to offer."
-        action={<CompanyLoadForm />}
+        action={readOnly ? undefined : <CompanyLoadForm />}
       />
 
-      <CompaniesView companies={companies} summaries={summaries} />
+      <CompaniesView companies={companies} summaries={summaries} readOnly={readOnly} />
     </>
   );
 }

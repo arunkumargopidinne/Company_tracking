@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { saveRsaDraft } from "@/lib/rsa-source";
+import { requireApiPermission } from "@/lib/rbac";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,6 +26,9 @@ export async function PUT(
   request: Request,
   context: { params: Promise<{ companyId: string }> },
 ) {
+  const auth = await requireApiPermission("write");
+  if (auth.response) return auth.response;
+
   const { companyId } = await context.params;
   const parsed = draftSchema.safeParse(await request.json());
 
@@ -64,4 +68,3 @@ function revalidateRsaPaths(companyId: string) {
   revalidatePath(`/companies/${companyId}/rsa`);
   revalidatePath("/rsa");
 }
-

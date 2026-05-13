@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 
 import { appendSheetRows } from "@/lib/google-sheets";
+import { requireApiPermission } from "@/lib/rbac";
 
 export const runtime = "nodejs";
 
 export async function POST() {
+  const auth = await requireApiPermission("write");
+  if (auth.response) return auth.response;
+
   const result = await appendSheetRows({
     range: "AuditLog!A:F",
     values: [

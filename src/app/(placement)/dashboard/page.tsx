@@ -23,7 +23,12 @@ import {
 } from "@/lib/application-source";
 import { calculateCompanyStatusFromSummary } from "@/lib/company-status";
 import { getCompaniesForDashboard } from "@/lib/company-source";
+import { getRecentCompanyUpdates } from "@/lib/company-updates-source";
+import { UserStatus } from "@/generated/prisma/enums";
+import { hasDatabaseUrl, prisma } from "@/lib/db";
 import { auditLogs } from "@/lib/mock-data";
+import { getRsaChartData } from "@/lib/report-analytics";
+import { getCurrentSessionUser, isReadOnlyRole } from "@/lib/rbac";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +39,14 @@ export default async function DashboardPage() {
   ) as Record<string, ApplicationSummary>;
   const studentPipeline = await getStudentPipelineFromApplications();
   const applicationRecords = await getApplicationsFromSheets();
+  const chartData = await getRsaChartData();
+  const sessionUser = await getCurrentSessionUser();
+  const readOnly = isReadOnlyRole(sessionUser?.role);
+  const recentCompanyUpdates = await getRecentCompanyUpdates(5);
+  const pendingApprovalCount =
+    sessionUser?.role === "SUPERADMIN" && hasDatabaseUrl()
+      ? await prisma.user.count({ where: { status: UserStatus.PENDING } })
+      : 0;
   const companyStatuses = allCompanies.map(
     (company) =>
       calculateCompanyStatusFromSummary(summaries[company.id]) ?? company.currentStatus,
@@ -72,6 +85,16 @@ export default async function DashboardPage() {
           </Link>
         }
       />
+
+      {pendingApprovalCount > 0 ? (
+        <Link
+          href="/admin/users"
+          className="mb-5 block rounded-[8px] border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-950 transition hover:border-amber-300"
+        >
+          {pendingApprovalCount} user approval request
+          {pendingApprovalCount === 1 ? "" : "s"} pending. Open User Approvals to approve or reject access.
+        </Link>
+      ) : null}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard
@@ -114,6 +137,7 @@ export default async function DashboardPage() {
                 key={company.id}
                 company={company}
                 summary={summaries[company.id]}
+                readOnly={readOnly}
               />
             ))}
           </div>
@@ -132,6 +156,39 @@ export default async function DashboardPage() {
         </section>
       </div>
 
+      <section className="mt-7 rounded-[8px] border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-xl font-black text-slate-950">Daily Company Updates</h2>
+          <Link href="/companies" className="text-sm font-bold text-indigo-600">
+            Open companies
+          </Link>
+        </div>
+        <div className="space-y-3">
+          {recentCompanyUpdates.map((update) => (
+            <Link
+              key={update.id}
+              href={`/companies/${update.companyId}`}
+              className="block rounded-[8px] border border-slate-200 bg-slate-50 p-4 transition hover:border-indigo-300"
+            >
+              <div className="flex flex-wrap justify-between gap-2">
+                <p className="font-black text-slate-950">{update.companyName}</p>
+                <p className="text-xs font-bold uppercase text-slate-500">
+                  {formatUpdateDate(update.updateDate)}
+                </p>
+              </div>
+              <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-600">
+                {update.content}
+              </p>
+            </Link>
+          ))}
+          {recentCompanyUpdates.length === 0 ? (
+            <div className="rounded-[8px] border border-dashed border-slate-300 p-6 text-center text-sm font-semibold text-slate-500">
+              No daily company updates yet.
+            </div>
+          ) : null}
+        </div>
+      </section>
+
       <section className="mt-7">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-xl font-black text-slate-950">RSA Dashboard Graphs</h2>
@@ -139,7 +196,7 @@ export default async function DashboardPage() {
             Full RSA
           </Link>
         </div>
-        <RsaCharts />
+        <RsaCharts data={chartData} />
       </section>
 
       <section className="mt-7 rounded-[8px] border border-slate-200 bg-white p-5 shadow-sm">
@@ -181,6 +238,11 @@ function parseCompanyDate(value?: string) {
 
   const parsed = new Date(trimmed);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function formatUpdateDate(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString("en-IN");
 }
 
 function Rule({

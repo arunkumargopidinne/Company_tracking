@@ -19,6 +19,8 @@
     "@prisma/client": "^7.8.0",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
+    "firebase": "^12.13.0",
+    "firebase-admin": "^13.9.0",
     "googleapis": "^171.4.0",
     "lucide-react": "^1.14.0",
     "next": "16.2.4",

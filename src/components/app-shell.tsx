@@ -2,8 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { signOut } from "next-auth/react";
 import {
+  Activity,
   BarChart3,
+  Bell,
   Building2,
   GraduationCap,
   LayoutDashboard,
@@ -11,11 +14,13 @@ import {
   Menu,
   Settings,
   TrendingUp,
+  UsersRound,
   X,
 } from "lucide-react";
 
 import { clsx } from "clsx";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { ThemeToggle } from "./theme-toggle";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -23,14 +28,76 @@ const navItems = [
   { href: "/students", label: "Students", icon: GraduationCap },
   { href: "/student-reports", label: "Student Scores", icon: TrendingUp },
   { href: "/reports", label: "Reports", icon: BarChart3, matches: ["/reports", "/rsa"] },
+  { href: "/notifications", label: "Notifications", icon: Bell },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+type ShellUser = {
+  id: string;
+  name: string | null;
+  email: string | null;
+  role: string;
+};
+
+export function AppShell({
+  children,
+  user,
+  pendingApprovalCount = 0,
+  notificationCount = 0,
+}: {
+  children: React.ReactNode;
+  user: ShellUser;
+  pendingApprovalCount?: number;
+  notificationCount?: number;
+}) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [liveNotificationCount, setLiveNotificationCount] = useState(notificationCount);
   const desktopOffset = collapsed ? "lg:pl-20" : "lg:pl-72";
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function refreshNotificationCount() {
+      try {
+        const response = await fetch("/api/notifications/count", { cache: "no-store" });
+        const payload = await response.json().catch(() => ({}));
+
+        if (!cancelled && response.ok && typeof payload.count === "number") {
+          setLiveNotificationCount(payload.count);
+        }
+      } catch {
+        // The server-rendered count remains visible if polling fails.
+      }
+    }
+
+    const intervalId = window.setInterval(refreshNotificationCount, 30000);
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        refreshNotificationCount();
+      }
+    }
+
+    function handleNotificationCount(event: Event) {
+      const count = (event as CustomEvent<{ count?: number }>).detail?.count;
+
+      if (typeof count === "number") {
+        setLiveNotificationCount(count);
+      }
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("notifications:count", handleNotificationCount);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("notifications:count", handleNotificationCount);
+    };
+  }, []);
 
   function toggleNavigation() {
     if (window.matchMedia("(min-width: 1024px)").matches) {
@@ -52,6 +119,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <SidebarContent
           pathname={pathname}
           collapsed={collapsed}
+          role={user.role}
+          pendingApprovalCount={pendingApprovalCount}
+          notificationCount={liveNotificationCount}
           onNavigate={() => setMobileOpen(false)}
         />
       </aside>
@@ -85,13 +155,27 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </Link>
           </div>
           <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+            <ThemeToggle />
+            <Link
+              href="/notifications"
+              className="relative inline-flex h-10 w-10 items-center justify-center rounded-[8px] text-slate-700 transition hover:bg-slate-100 hover:text-slate-950"
+              title="Notifications"
+            >
+              <Bell className="h-5 w-5" aria-hidden="true" />
+              {liveNotificationCount > 0 ? (
+                <span className="absolute -right-1 -top-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-600 px-1.5 text-[11px] font-black text-white">
+                  {formatBadgeCount(liveNotificationCount)}
+                </span>
+              ) : null}
+            </Link>
             <span className="rounded-full bg-slate-100 px-3 py-1.5 text-sm font-semibold text-slate-700 sm:px-4">
-              Admin
+              {roleLabel(user.role)}
             </span>
             <button
               className="inline-flex h-10 items-center gap-2 rounded-[8px] px-3 text-sm font-semibold text-slate-900 transition hover:bg-slate-100"
               type="button"
               title="Sign out"
+              onClick={() => signOut({ callbackUrl: "/login" })}
             >
               <LogOut className="h-5 w-5" aria-hidden="true" />
               <span className="hidden sm:inline">Sign out</span>
@@ -122,6 +206,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <SidebarContent
               pathname={pathname}
               collapsed={false}
+              role={user.role}
+              pendingApprovalCount={pendingApprovalCount}
+              notificationCount={liveNotificationCount}
               onNavigate={() => setMobileOpen(false)}
             />
           </aside>
@@ -134,7 +221,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           desktopOffset,
         )}
       >
-        <div className="mx-auto w-full max-w-7xl">{children}</div>
+        <div className="mx-auto w-full max-w-7xl animate-enter">{children}</div>
       </main>
     </div>
   );
@@ -143,12 +230,27 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 function SidebarContent({
   pathname,
   collapsed,
+  role,
+  pendingApprovalCount,
+  notificationCount,
   onNavigate,
 }: {
   pathname: string;
   collapsed: boolean;
+  role: string;
+  pendingApprovalCount: number;
+  notificationCount: number;
   onNavigate: () => void;
 }) {
+  const visibleNavItems =
+    role === "SUPERADMIN"
+      ? [
+          ...navItems,
+          { href: "/admin/users", label: "User Approvals", icon: UsersRound },
+          { href: "/admin/activity", label: "Active Logs", icon: Activity },
+        ]
+      : navItems;
+
   return (
     <div className="flex h-full flex-col">
       <Link
@@ -174,7 +276,7 @@ function SidebarContent({
       </Link>
 
       <nav className="flex-1 space-y-1 px-3 py-3">
-        {navItems.map((item) => {
+        {visibleNavItems.map((item) => {
           const Icon = item.icon;
           const active = isActive(pathname, item.href, item.matches);
 
@@ -185,7 +287,7 @@ function SidebarContent({
               onClick={onNavigate}
               title={item.label}
               className={clsx(
-                "flex min-h-11 items-center rounded-[8px] text-sm font-bold transition",
+                "relative flex min-h-11 items-center rounded-[8px] text-sm font-bold transition",
                 collapsed ? "justify-center px-2" : "gap-3 px-3",
                 active
                   ? "bg-indigo-600 text-white shadow-sm"
@@ -194,6 +296,17 @@ function SidebarContent({
             >
               <Icon className="h-5 w-5 shrink-0" aria-hidden="true" />
               {collapsed ? null : <span className="min-w-0">{item.label}</span>}
+              {getItemBadgeCount(item.href, pendingApprovalCount, notificationCount) > 0 ? (
+                <span
+                  className={clsx(
+                    "ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-black",
+                    active ? "bg-white text-indigo-700" : "bg-rose-600 text-white",
+                    collapsed && "absolute right-1 top-1",
+                  )}
+                >
+                  {formatBadgeCount(getItemBadgeCount(item.href, pendingApprovalCount, notificationCount))}
+                </span>
+              ) : null}
             </Link>
           );
         })}
@@ -210,4 +323,24 @@ function isActive(pathname: string, href: string, matches: string[] = []) {
       pathname === item ||
       (item !== "/dashboard" && pathname.startsWith(`${item}/`)),
   );
+}
+
+function roleLabel(role: string) {
+  if (role === "SUPERADMIN") return "Super Admin";
+  if (role === "STAKEHOLDER") return "Stakeholder";
+  return "Admin";
+}
+
+function getItemBadgeCount(
+  href: string,
+  pendingApprovalCount: number,
+  notificationCount: number,
+) {
+  if (href === "/admin/users") return pendingApprovalCount;
+  if (href === "/notifications") return notificationCount;
+  return 0;
+}
+
+function formatBadgeCount(count: number) {
+  return count > 99 ? "99+" : String(count);
 }

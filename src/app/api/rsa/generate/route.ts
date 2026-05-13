@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { generateAndSaveCompanyRsa } from "@/lib/rsa-source";
+import { requireApiPermission } from "@/lib/rbac";
 
 export const runtime = "nodejs";
 
@@ -11,6 +12,9 @@ const rsaSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  const auth = await requireApiPermission("write");
+  if (auth.response) return auth.response;
+
   const parsed = rsaSchema.safeParse(await request.json());
 
   if (!parsed.success) {

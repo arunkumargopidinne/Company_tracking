@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { deleteCompanyFromSheet } from "@/lib/company-source";
+import { requireApiPermission } from "@/lib/rbac";
 
 export const runtime = "nodejs";
 
@@ -10,6 +11,9 @@ const deleteCompanySchema = z.object({
 });
 
 export async function POST(request: Request) {
+  const auth = await requireApiPermission("write");
+  if (auth.response) return auth.response;
+
   const parsed = deleteCompanySchema.safeParse(await request.json());
 
   if (!parsed.success) {

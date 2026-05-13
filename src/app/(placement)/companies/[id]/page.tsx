@@ -11,14 +11,17 @@ import {
 import { AddApplicantForm } from "@/components/forms/add-applicant-form";
 import { DeleteApplicantButton } from "@/components/forms/delete-applicant-button";
 import { EditCompanyForm } from "@/components/forms/edit-company-form";
+import { CompanyUpdatesPanel } from "@/components/company-updates-panel";
 import { JDViewButton } from "@/components/jd-view-button";
 import { PipelineBoard } from "@/components/pipeline/pipeline-board";
 import { PageHeader } from "@/components/page-header";
 import { StatCard } from "@/components/stat-card";
 import { StatusBadge } from "@/components/status-badge";
 import { getCompanyPipelineData } from "@/lib/application-source";
+import { getCompanyUpdates } from "@/lib/company-updates-source";
 import { getCompanyForDashboard } from "@/lib/company-source";
 import { stageLabel } from "@/lib/pipeline";
+import { can, getCurrentSessionUser, isReadOnlyRole } from "@/lib/rbac";
 import { getLatestRsaForCompany } from "@/lib/rsa-source";
 
 export const dynamic = "force-dynamic";
@@ -35,12 +38,19 @@ export default async function CompanyDetailPage({
     notFound();
   }
 
+  const [pipelineData, latestRsa, updates, sessionUser] = await Promise.all([
+    getCompanyPipelineData(company.id),
+    getLatestRsaForCompany(company.id),
+    getCompanyUpdates(company.id),
+    getCurrentSessionUser(),
+  ]);
   const {
     applications: companyApplications,
     students,
     summary,
-  } = await getCompanyPipelineData(company.id);
-  const latestRsa = await getLatestRsaForCompany(company.id);
+  } = pipelineData;
+  const readOnly = isReadOnlyRole(sessionUser?.role);
+  const canCreateDailyUpdates = can(sessionUser?.role, "company_updates");
   const rsaButtonLabel =
     latestRsa?.status === "Confirmed"
       ? "View RSA"
@@ -61,8 +71,10 @@ export default async function CompanyDetailPage({
               jdContent={company.jdDetails}
               jdLink={company.jdLink}
             />
-            <EditCompanyForm company={company} />
-            <AddApplicantForm companyId={company.id} companyName={company.name} />
+            {!readOnly ? <EditCompanyForm company={company} /> : null}
+            {!readOnly ? (
+              <AddApplicantForm companyId={company.id} companyName={company.name} />
+            ) : null}
             <Link
               href={`/companies/${company.id}/rsa`}
               className="inline-flex h-12 items-center gap-2 rounded-[8px] border border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 shadow-sm hover:border-indigo-300 hover:text-indigo-600"
@@ -98,6 +110,12 @@ export default async function CompanyDetailPage({
         </dl>
       </section>
 
+      <CompanyUpdatesPanel
+        companyId={company.id}
+        updates={updates}
+        canCreate={canCreateDailyUpdates}
+      />
+
       <div className="mt-7">
         <PipelineBoard
           key={companyApplications
@@ -106,6 +124,7 @@ export default async function CompanyDetailPage({
           companyId={company.id}
           applications={companyApplications}
           students={students}
+          readOnly={readOnly}
         />
       </div>
 
@@ -170,7 +189,11 @@ export default async function CompanyDetailPage({
                     </td>
                     <td className="px-3 py-3 text-slate-600">{application.remarks}</td>
                     <td className="px-3 py-3">
-                      <DeleteApplicantButton applicationId={application.id} />
+                      {!readOnly ? (
+                        <DeleteApplicantButton applicationId={application.id} />
+                      ) : (
+                        <span className="text-xs font-semibold text-slate-400">Read only</span>
+                      )}
                     </td>
                   </tr>
                 );

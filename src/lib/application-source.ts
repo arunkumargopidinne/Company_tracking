@@ -54,6 +54,13 @@ export type CompanyPipelineData = {
   summary: ApplicationSummary;
 };
 
+const APPLICATION_CACHE_TTL_MS = 30_000;
+let applicationRowsCache: { value: ApplicationRow[]; expiresAt: number } | null = null;
+
+export function invalidateApplicationCache() {
+  applicationRowsCache = null;
+}
+
 const APPLICATION_HEADERS = [
   "DATE",
   "Company ID",
@@ -126,11 +133,16 @@ export async function getApplicationSummariesByCompany() {
     return summaries;
   }
 
+  const grouped = new Map<string, Application[]>();
+
   for (const row of sheetRows) {
-    const applications = sheetRows
-      .filter((item) => item.companyId === row.companyId)
-      .map(rowToApplication);
-    summaries.set(row.companyId, summarizeApplications(applications));
+    const applications = grouped.get(row.companyId) ?? [];
+    applications.push(rowToApplication(row));
+    grouped.set(row.companyId, applications);
+  }
+
+  for (const [companyId, applications] of grouped.entries()) {
+    summaries.set(companyId, summarizeApplications(applications));
   }
 
   return summaries;
@@ -187,7 +199,7 @@ export async function addApplicantsToSheet(inputs: ApplicantInput[]) {
     };
   }
 
-  return appendSheetRows({
+  const result = await appendSheetRows({
     range: getApplicationTrackingRange(),
     values: uniqueInputs.map((input) => [
         formatSheetDate(new Date()),
@@ -213,11 +225,14 @@ export async function addApplicantsToSheet(inputs: ApplicantInput[]) {
         input.percentage ?? "",
         input.applicationId,
       ]),
-  }).then((result) => ({
+  });
+  invalidateApplicationCache();
+
+  return {
     ...result,
     appended: result.skipped ? 0 : uniqueInputs.length,
     duplicateCount,
-  }));
+  };
 }
 
 export function parseBulkApplicants(input: {
@@ -267,6 +282,7 @@ export async function getStudentPipelineFromApplications() {
 }
 
 export async function updateApplicantStages(input: {
+  companyId?: string;
   applicationIds: string[];
   targetStage: PipelineStageId;
   remarks?: string;
@@ -283,6 +299,27 @@ export async function updateApplicantStages(input: {
     ? sanitizeApplicationRemarks(input.remarks ?? "")
     : "";
   const rows = await readApplicationRows();
+  const updatedRows = rows.map((row) => {
+    const rowId = row.applicationId || `sheet-app-${row.rowNumber}`;
+
+    if (!input.applicationIds.includes(rowId)) {
+      return row;
+    }
+
+    return {
+      ...row,
+      currentStage: input.targetStage,
+      status,
+      rejectedRound:
+        (isRejected || isDropped) && input.rejectedAtRound
+          ? input.rejectedAtRound
+          : undefined,
+      rejectionReason: isRejected || isDropped ? cleanRemarks : "",
+      selectedDate,
+      remarks: cleanRemarks || row.remarks,
+      updatedAt,
+    } satisfies ApplicationRow;
+  });
 
   const results = [];
 
@@ -313,9 +350,16 @@ export async function updateApplicantStages(input: {
     );
   }
 
+  invalidateApplicationCache();
+
   return {
     skipped: results.some((result) => result.skipped),
     results,
+    updatedApplications: input.companyId
+      ? updatedRows
+          .filter((row) => row.companyId === input.companyId)
+          .map(rowToApplication)
+      : [],
   };
 }
 
@@ -325,10 +369,12 @@ export async function deleteApplicantsFromSheet(applicationIds: string[]) {
     .map((applicationId) => getSheetRowNumber(applicationId, rows))
     .filter((rowNumber): rowNumber is number => Boolean(rowNumber));
 
-  return deleteSheetRows({
+  const result = await deleteSheetRows({
     sheetTitle: getApplicationSheetTitle(),
     rowNumbers,
   });
+  invalidateApplicationCache();
+  return result;
 }
 
 function summarizeApplications(items: Application[]): ApplicationSummary {
@@ -369,6 +415,10 @@ type ApplicationRow = {
 };
 
 async function readApplicationRows(): Promise<ApplicationRow[]> {
+  if (applicationRowsCache && applicationRowsCache.expiresAt > Date.now()) {
+    return applicationRowsCache.value;
+  }
+
   const result = await readSheetRows({ range: getApplicationTrackingRange() });
 
   if (result.skipped || result.values.length <= 1) {
@@ -377,6 +427,7 @@ async function readApplicationRows(): Promise<ApplicationRow[]> {
       reason: result.reason,
       valueCount: result.values.length,
     });
+    applicationRowsCache = { value: [], expiresAt: Date.now() + APPLICATION_CACHE_TTL_MS };
     return [];
   }
 
@@ -386,10 +437,12 @@ async function readApplicationRows(): Promise<ApplicationRow[]> {
     rows: result.values.length - 1,
   });
 
-  return result.values
+  const rows = result.values
     .slice(1)
     .map((row, index) => rowToApplicationRow(row, index + 2, headers))
     .filter((row): row is ApplicationRow => Boolean(row));
+  applicationRowsCache = { value: rows, expiresAt: Date.now() + APPLICATION_CACHE_TTL_MS };
+  return rows;
 }
 
 function rowToApplicationRow(

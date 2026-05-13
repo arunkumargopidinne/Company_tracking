@@ -10,6 +10,7 @@ const querySchema = z.object({
   assessmentMin: z.coerce.number().optional(),
   mentorMin: z.coerce.number().optional(),
   batch: z.string().optional(),
+  yog: z.string().optional(),
   status: z.string().optional(),
   search: z.string().optional(),
   export: z.enum(["csv", "json"]).optional(),
@@ -23,6 +24,7 @@ export async function GET(request: Request) {
     assessmentMin: searchParams.get("assessmentMin") ?? undefined,
     mentorMin: searchParams.get("mentorMin") ?? undefined,
     batch: searchParams.get("batch") ?? undefined,
+    yog: searchParams.get("yog") ?? undefined,
     status: searchParams.get("status") ?? undefined,
     search: searchParams.get("search") ?? undefined,
     export: searchParams.get("export") ?? undefined,
@@ -44,6 +46,7 @@ export async function GET(request: Request) {
     assessmentMin: parsed.data.assessmentMin,
     mentorMin: parsed.data.mentorMin,
     batch: parsed.data.batch,
+    yog: parsed.data.yog,
     status: parsed.data.status,
     searchText: parsed.data.search,
   });

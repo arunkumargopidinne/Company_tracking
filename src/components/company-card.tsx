@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { memo } from "react";
 import { ArrowRight, BriefcaseBusiness, IndianRupee, MapPin } from "lucide-react";
 
 import type { ApplicationSummary } from "@/lib/application-source";
@@ -17,12 +18,14 @@ function statusTone(status: Company["currentStatus"]) {
   return "progress";
 }
 
-export function CompanyCard({
+export const CompanyCard = memo(function CompanyCard({
   company,
   summary,
+  readOnly = false,
 }: {
   company: Company;
   summary?: ApplicationSummary;
+  readOnly?: boolean;
 }) {
   const counts = summary ?? companySummary(company.id);
   const visibleStatus = calculateCompanyStatusFromSummary(counts) ?? company.currentStatus;
@@ -91,16 +94,18 @@ export function CompanyCard({
             jdLink={company.jdLink}
             compact
           />
-          <EditCompanyForm company={company} compact />
-          <DeleteCompanyButton
-            rowNumber={company.sheetRowNumber}
-            companyName={company.name}
-          />
+          {!readOnly ? <EditCompanyForm company={company} compact /> : null}
+          {!readOnly ? (
+            <DeleteCompanyButton
+              rowNumber={company.sheetRowNumber}
+              companyName={company.name}
+            />
+          ) : null}
         </div>
       </div>
     </article>
   );
-}
+});
 
 function Metric({
   label,

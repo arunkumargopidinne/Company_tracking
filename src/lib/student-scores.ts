@@ -10,6 +10,7 @@ export interface StudentScore {
   mentorScore: number;
   selectedStatus: string;
   batchDetails: string;
+  yog: string;
   activeStatus: string;
   preferredJobTrack: string;
   enrolledOn: string;
@@ -25,7 +26,7 @@ export interface StudentScore {
 }
 
 const DEFAULT_STUDENT_SCORES_SHEET_ID = "17K_QEIABJ2uq04TYf0ilsezllaZPLHOc4OatrBI4etI";
-const DEFAULT_STUDENT_SCORES_RANGE = "TOP_30!A:U";
+const DEFAULT_STUDENT_SCORES_RANGE = "TOP_30!A:V";
 
 export async function getStudentScores(): Promise<StudentScore[]> {
   const spreadsheetId =
@@ -84,6 +85,7 @@ export function filterStudents(
     assessmentMin?: number;
     mentorMin?: number;
     batch?: string;
+    yog?: string;
     status?: string;
     searchText?: string;
   },
@@ -101,6 +103,9 @@ export function filterStudents(
     if (filters.batch && student.batchDetails !== filters.batch) {
       return false;
     }
+    if (filters.yog && student.yog !== filters.yog) {
+      return false;
+    }
     if (
       filters.status &&
       normalizeValue(student.selectedStatus) !== normalizeValue(filters.status)
@@ -115,6 +120,7 @@ export function filterStudents(
         student.fullName,
         student.email,
         student.mobileNumber,
+        student.yog,
       ]
         .join(" ")
         .toLowerCase()
@@ -136,6 +142,7 @@ export function studentsToCSV(students: StudentScore[]): string {
     "Mentor Score",
     "Selected Status",
     "Batch Details",
+    "Year of Graduation",
     "Active Status",
     "Preferred Job Track",
     "Enrolled On",
@@ -160,6 +167,7 @@ export function studentsToCSV(students: StudentScore[]): string {
     student.mentorScore,
     student.selectedStatus,
     student.batchDetails,
+    student.yog,
     student.activeStatus,
     student.preferredJobTrack,
     student.enrolledOn,
@@ -201,6 +209,12 @@ export function getUniqueStatuses(students: StudentScore[]): string[] {
   ).sort();
 }
 
+export function getUniqueYogs(students: StudentScore[]): string[] {
+  return Array.from(new Set(students.map((student) => student.yog).filter(Boolean))).sort(
+    (a, b) => Number(a) - Number(b),
+  );
+}
+
 function rowToStudentScore(
   row: string[],
   headers: string[],
@@ -222,18 +236,19 @@ function rowToStudentScore(
     mentorScore: parseScore(cell(["Mentor_Score", "Mentor Score"], 6)),
     selectedStatus: cell(["Selected status", "Selected Status"], 7),
     batchDetails: cell(["Batch Details", "Batch"], 8),
-    activeStatus: cell(["Active Status"], 9),
-    preferredJobTrack: cell(["Preferred Job Track"], 10),
-    enrolledOn: cell(["Enrolled on", "Enrolled On"], 11),
-    productCode: cell(["Product Code"], 12),
-    gender: cell(["Gender"], 13),
-    state: cell(["State"], 14),
-    formFills: cell(["Form Fills"], 15),
-    placedThrough: cell(["Placed Through"], 16),
-    placementType: cell(["Placement Type"], 17),
-    placementDate: cell(["Placement date", "Placement Date"], 18),
-    placedOrganisation: cell(["Placed Organisation", "Placed Organization"], 19),
-    studentId: cell(["Student ID"], 20),
+    yog: cell(["YOG", "Year of Graduation", "Graduation Year", "Year Of Graduation"], 9),
+    activeStatus: cell(["Active Status"], 10),
+    preferredJobTrack: cell(["Preferred Job Track"], 11),
+    enrolledOn: cell(["Enrolled on", "Enrolled On"], 12),
+    productCode: cell(["Product Code"], 13),
+    gender: cell(["Gender"], 14),
+    state: cell(["State"], 15),
+    formFills: cell(["Form Fills"], 16),
+    placedThrough: cell(["Placed Through"], 17),
+    placementType: cell(["Placement Type"], 18),
+    placementDate: cell(["Placement date", "Placement Date"], 19),
+    placedOrganisation: cell(["Placed Organisation", "Placed Organization"], 20),
+    studentId: cell(["Student ID"], 21),
   };
 
   if (!student.userId && student.studentId) {

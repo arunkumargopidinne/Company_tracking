@@ -6,11 +6,11 @@ import { prisma, hasDatabaseUrl } from "@/lib/db";
 import { syncApplicationMoveToSheet } from "@/lib/google-sheets";
 import {
   calculateCompanyStatus,
-  getCompanyPipelineData,
   updateApplicantStages,
 } from "@/lib/application-source";
 import { updateCompanyStatusInSheet } from "@/lib/company-source";
 import { PIPELINE_STAGE_IDS } from "@/lib/pipeline";
+import { requireApiPermission } from "@/lib/rbac";
 import { ApplicationStage, AuditAction, RoundOutcome } from "@/generated/prisma/enums";
 
 export const runtime = "nodejs";
@@ -24,6 +24,9 @@ const moveSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  const auth = await requireApiPermission("write");
+  if (auth.response) return auth.response;
+
   const parsed = moveSchema.safeParse(await request.json());
 
   if (!parsed.success) {
@@ -58,8 +61,9 @@ export async function POST(request: Request) {
 
   const sheetUpdateResult = await updateApplicantStages(payload);
   const sheetAuditResult = await syncApplicationMoveToSheet(payload);
-  const latestPipeline = await getCompanyPipelineData(payload.companyId);
-  const calculatedCompanyStatus = calculateCompanyStatus(latestPipeline.applications);
+  const calculatedCompanyStatus = calculateCompanyStatus(
+    sheetUpdateResult.updatedApplications,
+  );
   const companyStatusSheetResult = await updateCompanyStatusInSheet(
     payload.companyId,
     calculatedCompanyStatus,
@@ -106,6 +110,7 @@ export async function POST(request: Request) {
       data: {
         entityType: "Application",
         entityId: payload.applicationIds.join(","),
+        actorId: auth.user?.id,
         action:
           payload.targetStage === "SELECTED"
             ? AuditAction.SELECT

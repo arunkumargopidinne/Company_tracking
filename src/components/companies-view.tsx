@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import Link from "next/link";
 import { Filter, Grid2X2, List, Search } from "lucide-react";
 import { clsx } from "clsx";
@@ -17,12 +17,15 @@ import { StatusBadge } from "./status-badge";
 export function CompaniesView({
   companies,
   summaries,
+  readOnly = false,
 }: {
   companies: Company[];
   summaries: Record<string, ApplicationSummary>;
+  readOnly?: boolean;
 }) {
   const [mode, setMode] = useState<"grid" | "table">("grid");
   const [search, setSearch] = useState("");
+  const deferredSearch = useDeferredValue(search);
   const [status, setStatus] = useState<"all" | "Hiring Done" | "Dropped" | "In Progress">("all");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
@@ -36,8 +39,8 @@ export function CompaniesView({
         const from = fromDate ? new Date(`${fromDate}T00:00:00`) : null;
         const to = toDate ? new Date(`${toDate}T23:59:59`) : null;
         const matchesSearch =
-          !search.trim() ||
-          company.name.toLowerCase().includes(search.trim().toLowerCase());
+          !deferredSearch.trim() ||
+          company.name.toLowerCase().includes(deferredSearch.trim().toLowerCase());
         const matchesStatus =
           status === "all" ||
           visibleStatus === status ||
@@ -47,7 +50,7 @@ export function CompaniesView({
 
         return matchesSearch && matchesStatus && matchesFrom && matchesTo;
       }),
-    [companies, fromDate, search, status, summaries, toDate],
+    [companies, deferredSearch, fromDate, status, summaries, toDate],
   );
 
   return (
@@ -122,6 +125,7 @@ export function CompaniesView({
               key={company.id}
               company={company}
               summary={summaries[company.id]}
+              readOnly={readOnly}
             />
           ))}
         </div>
@@ -129,6 +133,7 @@ export function CompaniesView({
         <CompanyTable
           companies={filteredCompanies}
           summaries={summaries}
+          readOnly={readOnly}
         />
       )}
     </section>
@@ -174,9 +179,11 @@ function parseCompanyDate(value?: string) {
 function CompanyTable({
   companies,
   summaries,
+  readOnly,
 }: {
   companies: Company[];
   summaries: Record<string, ApplicationSummary>;
+  readOnly: boolean;
 }) {
   return (
     <section className="rounded-[8px] border border-slate-200 bg-white p-5 shadow-sm">
@@ -244,13 +251,17 @@ function CompanyTable({
                     <StatusBadge>{visibleStatus}</StatusBadge>
                   </td>
                   <td className="px-3 py-3">
-                    <div className="flex flex-wrap gap-2">
-                      <EditCompanyForm company={company} compact />
-                      <DeleteCompanyButton
-                        rowNumber={company.sheetRowNumber}
-                        companyName={company.name}
-                      />
-                    </div>
+                    {readOnly ? (
+                      <span className="text-xs font-semibold text-slate-400">Read only</span>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        <EditCompanyForm company={company} compact />
+                        <DeleteCompanyButton
+                          rowNumber={company.sheetRowNumber}
+                          companyName={company.name}
+                        />
+                      </div>
+                    )}
                   </td>
                 </tr>
               );

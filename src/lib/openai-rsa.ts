@@ -7,6 +7,7 @@ import { getCompanyForDashboard } from "./company-source";
 import { stageLabel } from "./pipeline";
 import type {
   RsaAdminInputs,
+  RsaApplicationStudent,
   RsaApplicationsSummary,
   RsaCompanyDetails,
   RsaStats,
@@ -33,32 +34,38 @@ export async function generateCompanyRsaReport(input: {
   const apiKey = process.env.OPENAI_API_KEY;
 
   if (!apiKey) {
-    throw new Error("OPENAI_API_KEY is not configured.");
+    return buildConciseCompanyRsa(input);
   }
 
   const client = new OpenAI({ apiKey });
-  const response = await client.chat.completions.create({
-    model: process.env.OPENAI_MODEL || "gpt-4o-mini",
-    temperature: 0.2,
-    max_completion_tokens: 4096,
-    messages: [
-      {
-        role: "system",
-        content: "You are an expert placement analytics assistant.",
-      },
-      {
-        role: "user",
-        content: buildCompanyRsaPrompt(input),
-      },
-    ],
-  });
-  const content = response.choices[0]?.message?.content?.trim();
+  try {
+    const response = await client.chat.completions.create({
+      model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+      temperature: 0.2,
+      max_completion_tokens: 1200,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You write short, practical placement RSA reports for stakeholders and training teams.",
+        },
+        {
+          role: "user",
+          content: buildCompanyRsaPrompt(input),
+        },
+      ],
+    });
+    const content = response.choices[0]?.message?.content?.trim();
 
-  if (!content) {
-    throw new Error("OpenAI returned an empty RSA response.");
+    if (!content) {
+      return buildConciseCompanyRsa(input);
+    }
+
+    return compactRsaText(content);
+  } catch (error) {
+    console.error("[RSA AI] OpenAI generation failed; using fallback RSA.", error);
+    return buildConciseCompanyRsa(input);
   }
-
-  return content;
 }
 
 export async function generateRSA(input: {
@@ -189,15 +196,20 @@ function buildCompanyRsaPrompt(input: {
     jdDetails: input.company.jdDetails || "Information not available",
   };
 
-  return `You are an expert placement analytics assistant.
+  return `Generate a concise RSA report, where RSA means Rejection Selection Analysis.
 
-Generate a professional RSA report, where RSA means Rejection Selection Analysis.
+Goal:
+- Stakeholders should understand the hiring outcome quickly.
+- Placement trainers should know exactly what to prepare before the next similar drive.
 
-This report is for stakeholders to understand why candidates were rejected, why candidates were selected, what patterns were observed, and what improvements are needed.
-
-Use only the given data.
-Do not assume facts that are not available.
-If information is missing, mention "Information not available".
+Strict writing rules:
+- Keep the full report under 450 words.
+- Use simple language and short bullets.
+- Do not write long paragraphs.
+- Use only the given data.
+- Do not blame students.
+- Do not invent skills, remarks, or reasons.
+- If data is missing, say "Not enough data available".
 
 Company Details:
 ${JSON.stringify(companyDetails, null, 2)}
@@ -241,56 +253,140 @@ ${input.adminInputs.tags.length ? input.adminInputs.tags.join(", ") : "Informati
 
 Generate the RSA in this exact structure:
 
-1. Company Overview
-Briefly explain the company, role, location, required skills, and hiring process if available.
+1. Snapshot
+- Company, role, applications, selected, rejected, active.
+- Overall outcome in one line.
 
-2. Candidate Sharing Strategy
-Explain what kind of students were shared for this drive.
-Use admin input and available data.
-Mention if students were shared based on applications, benchmarking, weekly assessments, resume screening, or other criteria.
+2. What The Company Expected
+- 2 to 3 bullets from JD, admin input, and remarks.
 
-3. Interview / Assessment Focus
-Explain what the company mainly evaluated based on remarks, rejected rounds, selected remarks, and admin inputs.
+3. Selection Signals
+- 2 to 3 bullets from selected student remarks.
+- If no selected remarks exist, say "No clear selection remarks are available."
 
-4. Selection Analysis
-Explain why selected students were preferred.
-Mention common strengths from available data.
-If no selected students are available, clearly say:
-"As per the current data, no students have been marked as selected for this company."
+4. Rejection Signals
+- 2 to 4 bullets from rejection remarks and rejected rounds.
+- If no rejection remarks exist, say "No clear rejection remarks are available."
 
-5. Rejection Analysis
-Explain why students were rejected.
-Group rejection reasons into categories.
-Mention repeated reasons and rejected rounds.
-Use available rejection remarks.
+5. Training Actions
+- 4 to 5 direct actions the placement team can run before similar drives.
 
-6. Key Patterns Observed
-Summarize repeated patterns from applications, selected students, rejected students, in-progress students, and admin inputs.
-
-7. Training Gap Analysis
-Compare company expectations with student preparation/training.
-Mention gaps like React vs Django, frontend vs backend, Java gap, AWS/Docker gap, deployment gap, communication gap, logic-building gap, etc., only if present in admin input or data.
-
-8. Improvement Points
-Give practical improvement points for students and training/internal teams.
-
-9. Final Stakeholder Summary
-Write a clear final summary in 1-2 professional paragraphs.
-
-Tone:
-Professional, neutral, stakeholder-friendly.
-Do not blame students directly.
-Avoid harsh language.
-Use constructive language.
-Use neutral phrases such as:
-"The key challenge observed was..."
-"Students may require additional preparation in..."
-"The company expectation was beyond the current training scope..."
-"Candidates who demonstrated stronger communication and project explanation performed better..."
-"The rejection pattern indicates..."
-"The selection pattern indicates..."
+6. Stakeholder Summary
+- 2 short sentences.
 
 Output:
-Return only the RSA report content.
-Do not return JSON unless the API specifically needs JSON.`;
+Return only the RSA report content. Do not return JSON.`;
+}
+
+function buildConciseCompanyRsa(input: {
+  company: RsaCompanyDetails;
+  stats: RsaStats;
+  applicationsSummary: RsaApplicationsSummary;
+  adminInputs: RsaAdminInputs;
+}) {
+  const selectedSignals = summarizeReasons(
+    input.applicationsSummary.selectedStudents,
+    (student) => student.selectionReason || student.remarks,
+  );
+  const rejectionSignals = summarizeReasons(
+    input.applicationsSummary.rejectedStudents,
+    (student) =>
+      [
+        student.rejectedRound ? `${student.rejectedRound}:` : "",
+        student.rejectionReason || student.remarks,
+      ]
+        .filter(Boolean)
+        .join(" "),
+  );
+  const expectations = [
+    input.adminInputs.companyExpectations,
+    input.adminInputs.interviewFocus,
+    input.company.expectedSkills.length
+      ? `Expected skills: ${input.company.expectedSkills.slice(0, 6).join(", ")}`
+      : "",
+  ].filter(Boolean);
+  const trainingActions = [
+    input.adminInputs.trainingGap,
+    "Run a JD-specific revision session before sharing profiles.",
+    "Practice interview explanations using selected and rejected remarks.",
+    "Use benchmarking and weekly assessment scores to prioritize readiness.",
+    "Collect clear remarks for every selected and rejected candidate.",
+  ]
+    .filter(Boolean)
+    .slice(0, 5);
+
+  return compactRsaText(
+    [
+      "1. Snapshot",
+      `- Company: ${input.company.name}`,
+      `- Role: ${input.company.role || "Not enough data available"}`,
+      `- Applications: ${input.stats.totalApplications}; Selected: ${input.stats.selectedCount}; Rejected: ${input.stats.rejectedCount}; Active: ${input.stats.inProgressCount}`,
+      `- Outcome: ${outcomeLine(input.stats)}`,
+      "",
+      "2. What The Company Expected",
+      ...bulletList(expectations, "Not enough data available."),
+      "",
+      "3. Selection Signals",
+      ...bulletList(selectedSignals, "No clear selection remarks are available."),
+      "",
+      "4. Rejection Signals",
+      ...bulletList(rejectionSignals, "No clear rejection remarks are available."),
+      "",
+      "5. Training Actions",
+      ...bulletList(trainingActions, "Prepare students against the exact JD before similar drives."),
+      "",
+      "6. Stakeholder Summary",
+      `${input.company.name} RSA shows the current hiring outcome and the main readiness signals available in the sheet data.`,
+      "The placement team should use the remarks to plan focused preparation before the next similar company drive.",
+    ].join("\n"),
+  );
+}
+
+function summarizeReasons(
+  students: RsaApplicationStudent[],
+  selector: (student: RsaApplicationStudent) => string | undefined,
+) {
+  return Array.from(
+    new Set(
+      students
+        .map((student) => sanitizeReason(selector(student)))
+        .filter(Boolean),
+    ),
+  ).slice(0, 4);
+}
+
+function sanitizeReason(value?: string) {
+  const cleaned = (value ?? "").replace(/reason not available/gi, "").trim();
+  return cleaned || "";
+}
+
+function bulletList(items: string[], fallback: string) {
+  const source = items.length ? items : [fallback];
+  return source.map((item) => `- ${item}`);
+}
+
+function outcomeLine(stats: RsaStats) {
+  if (stats.inProgressCount > 0) {
+    return "Drive is still in progress because active applications remain.";
+  }
+  if (stats.selectedCount > 0) {
+    return "Hiring is done because selected candidates are recorded and no active applications remain.";
+  }
+  if (stats.totalApplications > 0 && stats.rejectedCount + stats.droppedCount === stats.totalApplications) {
+    return "Drive is dropped because all recorded applications are rejected or dropped.";
+  }
+  return "Outcome is not closed yet.";
+}
+
+function compactRsaText(value: string) {
+  const normalized = value
+    .replace(/\r\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  if (normalized.length <= 3200) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, 3150).replace(/\s+\S*$/, "")}\n\n[Shortened for stakeholder readability.]`;
 }

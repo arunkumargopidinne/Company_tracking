@@ -5,13 +5,17 @@ import { RsaCharts } from "@/components/charts/rsa-charts";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { getCompaniesForDashboard } from "@/lib/company-source";
+import { getRsaChartData } from "@/lib/report-analytics";
 import { getAllRsaReports } from "@/lib/rsa-source";
 
 export const dynamic = "force-dynamic";
 
 export default async function RsaPage() {
-  const companies = await getCompaniesForDashboard();
-  const reports = await getAllRsaReports();
+  const [companies, reports, chartData] = await Promise.all([
+    getCompaniesForDashboard(),
+    getAllRsaReports(),
+    getRsaChartData(),
+  ]);
   const latestByCompany = new Map<string, (typeof reports)[number]>();
   reports.forEach((report) => {
     if (!latestByCompany.has(report.companyId)) {
@@ -23,20 +27,27 @@ export default async function RsaPage() {
     <>
       <PageHeader
         title="Review & Selection Analysis"
-        description="Graph company outcomes, rejection reasons, benchmarking, assessments, and AI summaries."
+        description="Read-only reports from company pipelines, application outcomes, student scores, and AI summaries."
       />
 
-      <RsaCharts />
+      <RsaCharts data={chartData} />
 
       <section className="mt-7 rounded-[8px] border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-xl font-black text-slate-950">Stakeholder Overviews</h2>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-black text-slate-950">Stakeholder Overviews</h2>
+            <p className="mt-1 text-sm font-medium text-slate-500">
+              Reports stay read-only here. Open a company RSA workspace to create, confirm, or download the report.
+            </p>
+          </div>
+        </div>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           {companies.map((company) => {
             const report = latestByCompany.get(company.id);
             return (
               <Link
                 key={company.id}
-                href={`/companies/${company.id}/rsa`}
+                href={`/companies/${company.id}/rsa?from=reports`}
                 className="rounded-[8px] border border-slate-200 p-4 transition hover:border-indigo-300 hover:shadow-sm"
               >
                 <div className="flex items-start justify-between gap-3">
@@ -55,7 +66,7 @@ export default async function RsaPage() {
                 </p>
                 <span className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-indigo-600">
                   <Sparkles className="h-4 w-4" aria-hidden="true" />
-                  Open RSA
+                  {report ? "View / download RSA" : "Create RSA in Company"}
                 </span>
               </Link>
             );

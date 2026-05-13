@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation";
 import {
   CheckCircle2,
   Clipboard,
-  Download,
   FileClock,
+  FileText,
   Loader2,
+  Printer,
   Save,
   Sparkles,
   type LucideIcon,
@@ -35,15 +36,23 @@ const emptyAdminInputs: RsaAdminInputs = {
 
 export function CompanyRsaWorkspace({
   companyId,
+  companyName,
+  role,
   existingRsa,
   history,
+  readOnly = false,
 }: {
   companyId: string;
+  companyName?: string;
+  role?: string;
   existingRsa: RsaReportRecord | null;
   history: RsaReportRecord[];
+  readOnly?: boolean;
 }) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<TabId>("inputs");
+  const [activeTab, setActiveTab] = useState<TabId>(
+    readOnly && existingRsa ? "final" : "inputs",
+  );
   const [adminInputs, setAdminInputs] = useState<RsaAdminInputs>(
     existingRsa?.adminInputs ?? emptyAdminInputs,
   );
@@ -79,7 +88,11 @@ export function CompanyRsaWorkspace({
     [aiGeneratedRsa, finalEditedRsa, items, rsaId, status],
   );
   const finalRsaText =
-    status === "Confirmed" ? finalEditedRsa : confirmedRsa?.finalEditedRsa || "";
+    confirmedRsa?.finalEditedRsa ||
+    (status === "Confirmed" ? finalEditedRsa : "") ||
+    (readOnly ? finalEditedRsa || aiGeneratedRsa : "");
+  const finalReportAvailable = Boolean(finalRsaText.trim());
+  const reportTitle = `${companyName || companyId} RSA`;
 
   async function generate() {
     setOperation("generate");
@@ -190,16 +203,47 @@ export function CompanyRsaWorkspace({
     setNotice("Final RSA copied.");
   }
 
-  function downloadFinalRsa() {
-    const blob = new Blob([finalRsaText], { type: "text/plain;charset=utf-8" });
+  function downloadFinalRsaDoc() {
+    const blob = new Blob(
+      [
+        buildRsaDocumentHtml({
+          title: reportTitle,
+          subtitle: role,
+          body: finalRsaText,
+        }),
+      ],
+      { type: "application/msword;charset=utf-8" },
+    );
     const url = window.URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `${companyId}-rsa.txt`;
+    anchor.download = `${fileSafeName(companyName || companyId)}-rsa.doc`;
     document.body.appendChild(anchor);
     anchor.click();
     window.URL.revokeObjectURL(url);
     document.body.removeChild(anchor);
+    setNotice("DOC report downloaded.");
+  }
+
+  function saveFinalRsaPdf() {
+    const popup = window.open("", "_blank", "width=900,height=700");
+
+    if (!popup) {
+      setError("Please allow popups to save the RSA as PDF.");
+      return;
+    }
+
+    popup.document.write(
+      buildRsaDocumentHtml({
+        title: reportTitle,
+        subtitle: role,
+        body: finalRsaText,
+        autoPrint: true,
+      }),
+    );
+    popup.document.close();
+    popup.focus();
+    setNotice("PDF print window opened. Choose Save as PDF.");
   }
 
   return (
@@ -237,6 +281,11 @@ export function CompanyRsaWorkspace({
             {error}
           </p>
         ) : null}
+        {readOnly ? (
+          <p className="mb-4 rounded-[8px] bg-slate-50 p-3 text-sm font-semibold text-slate-600">
+            Read-only report view. Open the company from Companies to edit or regenerate RSA.
+          </p>
+        ) : null}
 
         {activeTab === "inputs" ? (
           <div className="space-y-5">
@@ -246,24 +295,28 @@ export function CompanyRsaWorkspace({
                 value={adminInputs.candidateSharingStrategy}
                 onChange={(value) => updateField("candidateSharingStrategy", value)}
                 placeholder="For this drive, we shared students who applied for the opportunity..."
+                disabled={readOnly}
               />
               <TextAreaField
                 label="Interview Focus"
                 value={adminInputs.interviewFocus}
                 onChange={(value) => updateField("interviewFocus", value)}
                 placeholder="Resume explanation, programming basics, Django, Java, AWS..."
+                disabled={readOnly}
               />
               <TextAreaField
                 label="Company Expectations"
                 value={adminInputs.companyExpectations}
                 onChange={(value) => updateField("companyExpectations", value)}
                 placeholder="Production-level projects, deployment, backend knowledge..."
+                disabled={readOnly}
               />
               <TextAreaField
                 label="Training Gap / Internal Observation"
                 value={adminInputs.trainingGap}
                 onChange={(value) => updateField("trainingGap", value)}
                 placeholder="Students were mainly trained on React JS, but company expected..."
+                disabled={readOnly}
               />
             </div>
             <TextAreaField
@@ -271,6 +324,7 @@ export function CompanyRsaWorkspace({
               value={adminInputs.additionalAdminNotes}
               onChange={(value) => updateField("additionalAdminNotes", value)}
               placeholder="Surprise tests, advanced questions, communication observations..."
+              disabled={readOnly}
             />
             <div>
               <p className="text-sm font-black text-slate-800">Tags</p>
@@ -284,6 +338,7 @@ export function CompanyRsaWorkspace({
                       type="checkbox"
                       checked={adminInputs.tags.includes(tag)}
                       onChange={() => toggleTag(tag)}
+                      disabled={readOnly}
                       className="h-4 w-4 rounded border-slate-300 text-indigo-600"
                     />
                     <span>{tag}</span>
@@ -291,7 +346,8 @@ export function CompanyRsaWorkspace({
                 ))}
               </div>
             </div>
-            <div className="flex justify-end">
+            {!readOnly ? (
+              <div className="flex justify-end">
               <ActionButton
                 onClick={generate}
                 loading={operation === "generate"}
@@ -299,7 +355,8 @@ export function CompanyRsaWorkspace({
               >
                 Generate RSA
               </ActionButton>
-            </div>
+              </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -309,10 +366,12 @@ export function CompanyRsaWorkspace({
               value={finalEditedRsa}
               onChange={(event) => setFinalEditedRsa(event.target.value)}
               rows={24}
+              disabled={readOnly}
               className="w-full resize-y rounded-[8px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-800 outline-none focus:border-indigo-300 focus:bg-white"
               placeholder="Generate RSA to create the AI draft."
             />
-            <div className="mt-4 flex flex-wrap justify-end gap-2">
+            {!readOnly ? (
+              <div className="mt-4 flex flex-wrap justify-end gap-2">
               <ActionButton
                 onClick={generate}
                 loading={operation === "generate"}
@@ -338,13 +397,14 @@ export function CompanyRsaWorkspace({
               >
                 Confirm RSA
               </ActionButton>
-            </div>
+              </div>
+            ) : null}
           </div>
         ) : null}
 
         {activeTab === "final" ? (
           <div>
-            {confirmedRsa ? (
+            {finalReportAvailable ? (
               <>
                 <div className="rounded-[8px] border border-slate-200 bg-slate-50 p-5">
                   <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-7 text-slate-800">
@@ -355,12 +415,17 @@ export function CompanyRsaWorkspace({
                   <ActionButton onClick={copyFinalRsa} icon={Clipboard} variant="secondary">
                     Copy RSA
                   </ActionButton>
-                  <ActionButton onClick={downloadFinalRsa} icon={Download} variant="secondary">
-                    Download Text
+                  <ActionButton onClick={downloadFinalRsaDoc} icon={FileText} variant="secondary">
+                    Download DOC
                   </ActionButton>
-                  <ActionButton onClick={() => setActiveTab("draft")} icon={FileClock}>
-                    Edit RSA
+                  <ActionButton onClick={saveFinalRsaPdf} icon={Printer} variant="secondary">
+                    Save PDF
                   </ActionButton>
+                  {!readOnly ? (
+                    <ActionButton onClick={() => setActiveTab("draft")} icon={FileClock}>
+                      Edit RSA
+                    </ActionButton>
+                  ) : null}
                 </div>
               </>
             ) : (
@@ -446,11 +511,13 @@ function TextAreaField({
   value,
   onChange,
   placeholder,
+  disabled,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
+  disabled?: boolean;
 }) {
   return (
     <label className="block text-sm font-black text-slate-800">
@@ -458,6 +525,7 @@ function TextAreaField({
       <textarea
         value={value}
         onChange={(event) => onChange(event.target.value)}
+        disabled={disabled}
         rows={4}
         className="mt-2 w-full resize-y rounded-[8px] border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-medium leading-6 text-slate-800 outline-none focus:border-indigo-300 focus:bg-white"
         placeholder={placeholder}
@@ -540,4 +608,57 @@ function formatDate(value: string) {
   if (!value) return "-";
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString("en-IN");
+}
+
+function buildRsaDocumentHtml({
+  title,
+  subtitle,
+  body,
+  autoPrint,
+}: {
+  title: string;
+  subtitle?: string;
+  body: string;
+  autoPrint?: boolean;
+}) {
+  const printedAt = new Date().toLocaleString("en-IN");
+
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>${escapeHtml(title)}</title>
+    <style>
+      body { font-family: Arial, sans-serif; color: #0f172a; margin: 36px; }
+      h1 { font-size: 26px; margin: 0 0 6px; }
+      .subtitle { color: #475569; font-size: 15px; margin: 0 0 18px; }
+      .meta { color: #64748b; font-size: 12px; margin-bottom: 24px; }
+      pre { white-space: pre-wrap; font-family: Arial, sans-serif; font-size: 13.5px; line-height: 1.65; }
+      @media print { body { margin: 24px; } }
+    </style>
+  </head>
+  <body>
+    <h1>${escapeHtml(title)}</h1>
+    ${subtitle ? `<p class="subtitle">${escapeHtml(subtitle)}</p>` : ""}
+    <p class="meta">Generated from EduTech Pipeline on ${escapeHtml(printedAt)}</p>
+    <pre>${escapeHtml(body)}</pre>
+    ${autoPrint ? "<script>window.onload = function () { window.print(); };</script>" : ""}
+  </body>
+</html>`;
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function fileSafeName(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "") || "company";
 }

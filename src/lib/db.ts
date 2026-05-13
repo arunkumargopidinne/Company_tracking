@@ -22,5 +22,21 @@ if (process.env.NODE_ENV !== "production") {
 
 export function hasDatabaseUrl() {
   const url = process.env.DATABASE_URL;
-  return Boolean(url && !url.includes("johndoe:randompassword"));
+
+  if (!url) return false;
+
+  try {
+    const parsed = new URL(url);
+    const username = decodeURIComponent(parsed.username || "");
+    const password = decodeURIComponent(parsed.password || "");
+    return Boolean(
+      parsed.protocol.startsWith("postgres") &&
+        username &&
+        username !== "johndoe" &&
+        password &&
+        password !== "randompassword",
+    );
+  } catch {
+    return false;
+  }
 }

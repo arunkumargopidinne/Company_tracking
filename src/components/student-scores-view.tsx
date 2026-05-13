@@ -20,6 +20,7 @@ interface StudentScore {
   mentorScore: number;
   selectedStatus: string;
   batchDetails: string;
+  yog: string;
   activeStatus: string;
   preferredJobTrack: string;
   enrolledOn: string;
@@ -39,6 +40,7 @@ interface FilterState {
   assessmentMin: number;
   mentorMin: number;
   batch: string;
+  yog: string;
   status: string;
   search: string;
 }
@@ -50,10 +52,12 @@ export function StudentScoresView() {
     assessmentMin: 0,
     mentorMin: 0,
     batch: "",
+    yog: "",
     status: "",
     search: "",
   });
   const [batches, setBatches] = useState<string[]>([]);
+  const [yogs, setYogs] = useState<string[]>([]);
   const [statuses, setStatuses] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -80,6 +84,7 @@ export function StudentScoresView() {
         params.append("mentorMin", String(nextFilters.mentorMin));
       }
       if (nextFilters.batch) params.append("batch", nextFilters.batch);
+      if (nextFilters.yog) params.append("yog", nextFilters.yog);
       if (nextFilters.status) params.append("status", nextFilters.status);
       if (nextFilters.search) params.append("search", nextFilters.search);
 
@@ -95,12 +100,15 @@ export function StudentScoresView() {
       setFilteredStudents(data.students ?? []);
 
       const uniqueBatches = new Set<string>();
+      const uniqueYogs = new Set<string>();
       const uniqueStatuses = new Set<string>();
       (data.students ?? []).forEach((student: StudentScore) => {
         if (student.batchDetails) uniqueBatches.add(student.batchDetails);
+        if (student.yog) uniqueYogs.add(student.yog);
         if (student.selectedStatus) uniqueStatuses.add(student.selectedStatus);
       });
       setBatches(Array.from(uniqueBatches).sort());
+      setYogs(Array.from(uniqueYogs).sort((a, b) => Number(a) - Number(b)));
       setStatuses(Array.from(uniqueStatuses).sort());
     } catch (fetchError) {
       console.error("Failed to fetch student scores:", fetchError);
@@ -125,6 +133,7 @@ export function StudentScoresView() {
       assessmentMin: 0,
       mentorMin: 0,
       batch: "",
+      yog: "",
       status: "",
       search: "",
     };
@@ -144,6 +153,7 @@ export function StudentScoresView() {
       params.append("mentorMin", String(filters.mentorMin));
     }
     if (filters.batch) params.append("batch", filters.batch);
+    if (filters.yog) params.append("yog", filters.yog);
     if (filters.status) params.append("status", filters.status);
     if (filters.search) params.append("search", filters.search);
     params.append("export", "csv");
@@ -163,6 +173,7 @@ export function StudentScoresView() {
       student.mentorScore,
       student.selectedStatus,
       student.batchDetails,
+      student.yog,
       student.activeStatus,
       student.preferredJobTrack,
     ]);
@@ -177,6 +188,7 @@ export function StudentScoresView() {
       "Mentor Score",
       "Selected Status",
       "Batch Details",
+      "YOG",
       "Active Status",
       "Preferred Job Track",
     ];
@@ -232,7 +244,7 @@ export function StudentScoresView() {
             <Search className="h-4 w-4 text-slate-400" />
             <input
               type="text"
-              placeholder="Search by name, email, phone, user ID, or student ID..."
+              placeholder="Search by name, email, phone, user ID, student ID, or YOG..."
               value={filters.search}
               onChange={(event) => handleFilterChange("search", event.target.value)}
               onKeyDown={(event) => event.key === "Enter" && applyFilters()}
@@ -251,7 +263,7 @@ export function StudentScoresView() {
         </div>
 
         {showFilters ? (
-          <div className="grid gap-4 border-t border-slate-200 pt-4 md:grid-cols-3 lg:grid-cols-6">
+          <div className="grid gap-4 border-t border-slate-200 pt-4 md:grid-cols-3 lg:grid-cols-7">
             <NumberFilter
               label="Benchmarking Min"
               value={filters.benchmarkingMin}
@@ -273,6 +285,13 @@ export function StudentScoresView() {
               emptyLabel="All Batches"
               options={batches}
               onChange={(value) => handleFilterChange("batch", value)}
+            />
+            <SelectFilter
+              label="YOG"
+              value={filters.yog}
+              emptyLabel="All Years"
+              options={yogs}
+              onChange={(value) => handleFilterChange("yog", value)}
             />
             <SelectFilter
               label="Status"
@@ -330,7 +349,7 @@ export function StudentScoresView() {
             No students found matching your filters.
           </div>
         ) : (
-          <table className="w-full min-w-[1050px]">
+          <table className="w-full min-w-[1130px]">
             <thead className="border-b border-slate-200 bg-slate-50">
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600">Name</th>
@@ -343,6 +362,7 @@ export function StudentScoresView() {
                 <th className="px-4 py-3 text-center text-xs font-semibold text-slate-600">Total Score</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600">Status</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600">Batch</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600">YOG</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
@@ -391,6 +411,9 @@ export function StudentScoresView() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-600">{student.batchDetails}</td>
+                    <td className="px-4 py-3 text-sm font-semibold text-slate-700">
+                      {student.yog || "-"}
+                    </td>
                   </tr>
                 );
               })}

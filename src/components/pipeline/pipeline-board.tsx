@@ -1,7 +1,6 @@
 "use client";
 
 import { memo, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   DndContext,
   DragEndEvent,
@@ -22,10 +21,12 @@ export function PipelineBoard({
   companyId,
   applications,
   students,
+  readOnly = false,
 }: {
   companyId: string;
   applications: Application[];
   students: Student[];
+  readOnly?: boolean;
 }) {
   const [cards, setCards] = useState(applications);
   const [selected, setSelected] = useState<string[]>([]);
@@ -37,7 +38,6 @@ export function PipelineBoard({
   const [syncError, setSyncError] = useState("");
   const [remarks, setRemarks] = useState("");
   const [rejectedAtRound, setRejectedAtRound] = useState<PipelineStageId>("TECHNICAL_ROUND_1");
-  const router = useRouter();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
   const studentMap = useMemo(
@@ -46,6 +46,7 @@ export function PipelineBoard({
   );
 
   function toggleSelection(id: string) {
+    if (readOnly) return;
     setSelected((current) =>
       current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
     );
@@ -54,6 +55,10 @@ export function PipelineBoard({
   function onDragEnd(event: DragEndEvent) {
     const targetStage = event.over?.id as PipelineStageId | undefined;
     const activeId = String(event.active.id);
+
+    if (readOnly) {
+      return;
+    }
 
     if (!targetStage || !PIPELINE_STAGES.some((stage) => stage.id === targetStage)) {
       return;
@@ -140,8 +145,6 @@ export function PipelineBoard({
       const data = await response.json().catch(() => null);
       setCards(previousCards);
       setSyncError(data?.error || data?.sheetResult?.reason || "Status sync failed.");
-    } else {
-      router.refresh();
     }
 
     setSyncingIds((current) => current.filter((id) => !ids.includes(id)));
@@ -174,7 +177,6 @@ export function PipelineBoard({
       return;
     }
     setSelected([]);
-    router.refresh();
   }
 
   return (
@@ -186,7 +188,12 @@ export function PipelineBoard({
             Select multiple students, then drag one selected card to move the group.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        {readOnly ? (
+          <p className="rounded-[8px] bg-slate-100 px-3 py-2 text-sm font-bold text-slate-600">
+            Stakeholder read-only view
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
           <button
             type="button"
             onClick={() => requestMove(selected, "SELECTED")}
@@ -211,7 +218,8 @@ export function PipelineBoard({
           >
             Delete selected
           </button>
-        </div>
+          </div>
+        )}
       </div>
 
       {syncError ? (
@@ -231,6 +239,7 @@ export function PipelineBoard({
               selected={selected}
               syncingIds={syncingIds}
               toggleSelection={toggleSelection}
+              readOnly={readOnly}
             />
           ))}
         </div>
@@ -314,6 +323,7 @@ function StageColumn({
   selected,
   syncingIds,
   toggleSelection,
+  readOnly,
 }: {
   stage: PipelineStageId;
   cards: Application[];
@@ -321,6 +331,7 @@ function StageColumn({
   selected: string[];
   syncingIds: string[];
   toggleSelection: (id: string) => void;
+  readOnly: boolean;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: stage });
   const tone = stageTone(stage);
@@ -358,6 +369,7 @@ function StageColumn({
             checked={selected.includes(card.id)}
             syncing={syncingIds.includes(card.id)}
             onToggle={() => toggleSelection(card.id)}
+            readOnly={readOnly}
           />
         ))}
         {cards.length === 0 ? (
@@ -377,15 +389,18 @@ const StudentPipelineCard = memo(function StudentPipelineCard({
   checked,
   syncing,
   onToggle,
+  readOnly,
 }: {
   application: Application;
   student?: Student;
   checked: boolean;
   syncing: boolean;
   onToggle: () => void;
+  readOnly: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: application.id,
+    disabled: readOnly,
   });
   const pipelineStatus = statusForStage(application.currentStage);
 
@@ -405,6 +420,7 @@ const StudentPipelineCard = memo(function StudentPipelineCard({
             type="checkbox"
             checked={checked}
             onChange={onToggle}
+            disabled={readOnly}
             className="mt-1 h-4 w-4 rounded border-slate-300 text-indigo-600"
           />
           <span>
@@ -417,7 +433,7 @@ const StudentPipelineCard = memo(function StudentPipelineCard({
           type="button"
           className="rounded-[8px] p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:cursor-wait disabled:opacity-50"
           title="Drag student"
-          disabled={syncing}
+          disabled={syncing || readOnly}
           {...listeners}
           {...attributes}
         >

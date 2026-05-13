@@ -6,6 +6,7 @@ import { appendSheetRows, getCompanyTrackingRange } from "@/lib/google-sheets";
 import {
   createNextCompanyId,
   findCompanyByNameAndRole,
+  invalidateCompanyCache,
 } from "@/lib/company-source";
 import {
   parsedJobToCompanySheetRow,
@@ -13,6 +14,7 @@ import {
   validateParsedJob,
 } from "@/lib/jd-parser";
 import { parseJobDescriptionWithOpenAI } from "@/lib/openai-jd-parser";
+import { requireApiPermission } from "@/lib/rbac";
 import { ApplicationStage, AuditAction, CRM } from "@/generated/prisma/enums";
 
 export const runtime = "nodejs";
@@ -22,6 +24,9 @@ const importSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  const auth = await requireApiPermission("write");
+  if (auth.response) return auth.response;
+
   const parsed = importSchema.safeParse(await request.json());
 
   if (!parsed.success) {
@@ -169,6 +174,7 @@ export async function POST(request: Request) {
   if (sheetResult.skipped) {
     console.error("[JD Import] Failed to sync to Google Sheets", sheetResult);
   } else {
+    invalidateCompanyCache();
     console.log("[JD Import] Successfully synced to Google Sheets");
   }
 
@@ -231,6 +237,7 @@ export async function POST(request: Request) {
           entityType: "Company",
           entityId: companyId,
           action: AuditAction.CREATE,
+          actorId: auth.user?.id,
           message: `Imported JD for ${job.companyName} (${companyId}) from manual paste.`,
         },
       });

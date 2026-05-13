@@ -11,23 +11,31 @@ import { CompanyRsaWorkspace } from "@/components/company-rsa-workspace";
 import { PageHeader } from "@/components/page-header";
 import { StatCard } from "@/components/stat-card";
 import { StatusBadge } from "@/components/status-badge";
+import { getCurrentSessionUser, isReadOnlyRole } from "@/lib/rbac";
 import { getRsaOverview } from "@/lib/rsa-source";
 
 export const dynamic = "force-dynamic";
 
 export default async function CompanyRsaPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ from?: string; mode?: string }>;
 }) {
   const { id } = await params;
+  const query = await searchParams;
   const overview = await getRsaOverview(decodeURIComponent(id));
+  const sessionUser = await getCurrentSessionUser();
 
   if (!overview) {
     notFound();
   }
 
   const confirmed = overview.existingRsa?.status === "Confirmed";
+  const readOnly =
+    isReadOnlyRole(sessionUser?.role) ||
+    (Boolean(overview.existingRsa) && (query.from === "reports" || query.mode === "view"));
 
   return (
     <>
@@ -98,8 +106,11 @@ export default async function CompanyRsaPage({
       <div className="mt-7">
         <CompanyRsaWorkspace
           companyId={overview.company.id}
+          companyName={overview.company.name}
+          role={overview.company.role}
           existingRsa={overview.existingRsa}
           history={overview.history}
+          readOnly={readOnly}
         />
       </div>
     </>
@@ -116,4 +127,3 @@ function Info({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
-

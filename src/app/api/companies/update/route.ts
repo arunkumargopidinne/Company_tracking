@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { updateCompanyInSheet } from "@/lib/company-source";
 import { isValidCompanyName } from "@/lib/jd-parser";
+import { requireApiPermission } from "@/lib/rbac";
 
 export const runtime = "nodejs";
 
@@ -40,6 +41,9 @@ const updateCompanySchema = z.object({
 });
 
 export async function POST(request: Request) {
+  const auth = await requireApiPermission("write");
+  if (auth.response) return auth.response;
+
   const parsed = updateCompanySchema.safeParse(await request.json());
 
   if (!parsed.success) {

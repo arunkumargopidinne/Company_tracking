@@ -13,9 +13,27 @@ datasource db {
 }
 
 enum Role {
+  SUPERADMIN
   ADMIN
   PLACEMENT_TEAM
   STAKEHOLDER
+}
+
+enum UserStatus {
+  PENDING
+  APPROVED
+  DISABLED
+}
+
+enum AuthProvider {
+  CREDENTIALS
+  GOOGLE
+  FIREBASE
+}
+
+enum NotificationType {
+  COMPANY_UPDATE
+  USER_APPROVAL
 }
 
 enum CRM {
@@ -102,19 +120,38 @@ enum AuditAction {
   DROP
   SYNC
   RSA_GENERATE
+  REGISTER
+  APPROVE
+  DISABLE
+  ENABLE
+  LOGIN
+  PASSWORD_CHANGE
+  COMPANY_UPDATE
 }
 
 model User {
-  id        String   @id @default(cuid())
-  name      String
-  email     String   @unique
-  image     String?
-  role      Role     @default(PLACEMENT_TEAM)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                 String       @id @default(cuid())
+  name               String
+  username           String?
+  email              String       @unique
+  image              String?
+  userCode           String?      @unique
+  passwordHash       String?
+  role               Role         @default(ADMIN)
+  status             UserStatus   @default(PENDING)
+  authProvider       AuthProvider @default(CREDENTIALS)
+  mustChangePassword Boolean      @default(false)
+  approvedById       String?
+  approvedAt         DateTime?
+  disabledAt         DateTime?
+  lastLoginAt        DateTime?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
 
-  remarks  Remark[]
-  auditLog AuditLog[]
+  remarks        Remark[]
+  auditLog       AuditLog[]
+  companyUpdates CompanyUpdate[]
+  notifications  UserNotification[]
 }
 
 model Company {
@@ -140,6 +177,8 @@ model Company {
   rsaReports      RSAReport[]
   benchmarkResult BenchmarkResult[]
   assessmentResult AssessmentResult[]
+  updates         CompanyUpdate[]
+  notifications   UserNotification[]
 }
 
 model Student {
@@ -244,6 +283,44 @@ model Remark {
   student     Student?     @relation(fields: [studentId], references: [id], onDelete: Cascade)
   application Application? @relation(fields: [applicationId], references: [id], onDelete: Cascade)
   author      User?        @relation(fields: [authorId], references: [id], onDelete: SetNull)
+}
+
+model CompanyUpdate {
+  id             String   @id @default(cuid())
+  companyId      String
+  content        String
+  updateDate     DateTime @default(now())
+  authorId       String?
+  syncedToSheet  Boolean  @default(false)
+  sheetRowId     String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  author  User?   @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  notifications UserNotification[]
+
+  @@index([companyId, updateDate])
+}
+
+model UserNotification {
+  id              String           @id @default(cuid())
+  userId          String
+  type            NotificationType
+  title           String
+  message         String
+  href            String?
+  companyId       String?
+  companyUpdateId String?
+  readAt          DateTime?
+  createdAt       DateTime         @default(now())
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company       Company?       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyUpdate CompanyUpdate? @relation(fields: [companyUpdateId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+  @@index([companyId])
 }
 
 model RSAReport {

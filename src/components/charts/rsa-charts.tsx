@@ -14,153 +14,141 @@ import {
   YAxis,
 } from "recharts";
 
-import {
-  applications,
-  companies,
-  companySelectionRatios,
-  roundRejectionCounts,
-  studentRejectionCounts,
-  students,
-} from "@/lib/mock-data";
+import type { RsaChartData } from "@/lib/report-chart-types";
 
-const palette = ["#4f46e5", "#10b981", "#f43f5e", "#f59e0b", "#06b6d4"];
+const palette = ["#4f46e5", "#10b981", "#f43f5e", "#f59e0b", "#06b6d4", "#8b5cf6"];
 
-export function RsaCharts({ companyId }: { companyId?: string }) {
-  const companyStatus = [
-    { name: "Upcoming", value: companies.filter((item) => item.currentStatus === "Upcoming").length },
-    { name: "Hiring Done", value: companies.filter((item) => item.currentStatus === "Hiring Done" || item.currentStatus === "Selected").length },
-    { name: "Rejected All", value: companies.filter((item) => item.currentStatus === "Rejected All").length },
-    { name: "In Progress", value: companies.filter((item) => item.currentStatus === "In Progress").length },
-  ];
-
-  const benchmarkData = [
-    { name: "Benchmark Cleared", value: students.filter((item) => item.benchmarkStatus === "Cleared").length },
-    { name: "Not Cleared", value: students.filter((item) => item.benchmarkStatus === "Not Cleared").length },
-    { name: "Not Taken", value: students.filter((item) => item.benchmarkStatus === "Not Taken").length },
-  ];
-
-  const assessmentData = [
-    { name: "Assessment Cleared", value: students.filter((item) => item.assessmentStatus === "Cleared").length },
-    { name: "Not Cleared", value: students.filter((item) => item.assessmentStatus === "Not Cleared").length },
-    { name: "Not Taken", value: students.filter((item) => item.assessmentStatus === "Not Taken").length },
-  ];
-
-  const companyApplications = companyId
-    ? applications.filter((item) => item.companyId === companyId)
-    : applications;
-
-  const journeyData = [
-    {
-      name: "In Progress",
-      value: companyApplications.filter(
-        (item) => !["SELECTED", "REJECTED", "DROPPED"].includes(item.currentStage),
-      ).length,
-    },
-    {
-      name: "Selected",
-      value: companyApplications.filter((item) => item.currentStage === "SELECTED").length,
-    },
-    {
-      name: "Rejected",
-      value: companyApplications.filter((item) => item.currentStage === "REJECTED").length,
-    },
-  ];
-
+export function RsaCharts({ data }: { data: RsaChartData }) {
   return (
     <div className="grid gap-5 lg:grid-cols-2">
-      <ChartPanel title="Company Status">
-        <ResponsiveContainer width="100%" height={250}>
-          <PieChart>
-            <Pie data={companyStatus} dataKey="value" nameKey="name" outerRadius={88} label>
-              {companyStatus.map((entry, index) => (
-                <Cell key={entry.name} fill={palette[index % palette.length]} />
-              ))}
-            </Pie>
-            <Tooltip />
-            <Legend />
-          </PieChart>
-        </ResponsiveContainer>
+      <ChartPanel title="Company Pipeline Status">
+        <PieBlock data={data.companyStatus} />
+      </ChartPanel>
+
+      <ChartPanel title="Application Outcomes">
+        <PieBlock data={data.applicationOutcomes} />
       </ChartPanel>
 
       <ChartPanel title="Round-Wise Rejections">
-        <ResponsiveContainer width="100%" height={250}>
-          <BarChart data={roundRejectionCounts(companyId)}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-            <XAxis dataKey="round" tick={{ fontSize: 11 }} />
-            <YAxis allowDecimals={false} />
-            <Tooltip />
-            <Bar dataKey="count" fill="#f43f5e" radius={[6, 6, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
+        <EmptyAware hasData={hasCountData(data.roundRejections)}>
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={data.roundRejections}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis dataKey="round" tick={{ fontSize: 11 }} interval={0} />
+              <YAxis allowDecimals={false} />
+              <Tooltip />
+              <Bar dataKey="count" fill="#f43f5e" radius={[6, 6, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </EmptyAware>
       </ChartPanel>
 
-      <ChartPanel title="Student-Wise Rejection Count">
-        <ResponsiveContainer width="100%" height={250}>
-          <BarChart data={studentRejectionCounts()}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-            <XAxis dataKey="student" tick={{ fontSize: 11 }} />
-            <YAxis allowDecimals={false} />
-            <Tooltip />
-            <Bar dataKey="count" fill="#4f46e5" radius={[6, 6, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
+      <ChartPanel title="Top Student Rejection Counts">
+        <EmptyAware hasData={hasCountData(data.studentRejections)}>
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={data.studentRejections}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis dataKey="student" tick={{ fontSize: 11 }} interval={0} />
+              <YAxis allowDecimals={false} />
+              <Tooltip />
+              <Bar dataKey="count" fill="#4f46e5" radius={[6, 6, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </EmptyAware>
       </ChartPanel>
 
       <ChartPanel title="Company Selection Ratio">
-        <ResponsiveContainer width="100%" height={250}>
-          <BarChart data={companySelectionRatios()}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-            <XAxis dataKey="company" tick={{ fontSize: 11 }} />
-            <YAxis domain={[0, 100]} unit="%" />
-            <Tooltip />
-            <Bar dataKey="ratio" fill="#10b981" radius={[6, 6, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
-      </ChartPanel>
-
-      <ChartPanel title="Benchmarking">
-        <ResponsiveContainer width="100%" height={230}>
-          <PieChart>
-            <Pie data={benchmarkData} dataKey="value" nameKey="name" outerRadius={80} label>
-              {benchmarkData.map((entry, index) => (
-                <Cell key={entry.name} fill={palette[index % palette.length]} />
-              ))}
-            </Pie>
-            <Tooltip />
-            <Legend />
-          </PieChart>
-        </ResponsiveContainer>
-      </ChartPanel>
-
-      <ChartPanel title="Assessment Performance">
-        <ResponsiveContainer width="100%" height={230}>
-          <PieChart>
-            <Pie data={assessmentData} dataKey="value" nameKey="name" outerRadius={80} label>
-              {assessmentData.map((entry, index) => (
-                <Cell key={entry.name} fill={palette[(index + 1) % palette.length]} />
-              ))}
-            </Pie>
-            <Tooltip />
-            <Legend />
-          </PieChart>
-        </ResponsiveContainer>
-      </ChartPanel>
-
-      {companyId ? (
-        <ChartPanel title="Selected vs Rejected">
-          <ResponsiveContainer width="100%" height={230}>
-            <BarChart data={journeyData}>
+        <EmptyAware hasData={data.companySelectionRatios.some((item) => item.total > 0)}>
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={data.companySelectionRatios}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-              <XAxis dataKey="name" />
-              <YAxis allowDecimals={false} />
-              <Tooltip />
-              <Bar dataKey="value" fill="#06b6d4" radius={[6, 6, 0, 0]} />
+              <XAxis dataKey="company" tick={{ fontSize: 11 }} interval={0} />
+              <YAxis domain={[0, 100]} unit="%" />
+              <Tooltip
+                formatter={(value, name, item) => [
+                  `${value}% (${item.payload.selected}/${item.payload.total})`,
+                  name,
+                ]}
+              />
+              <Bar dataKey="ratio" fill="#10b981" radius={[6, 6, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
-        </ChartPanel>
-      ) : null}
+        </EmptyAware>
+      </ChartPanel>
+
+      <ChartPanel title="Company Application Split">
+        <EmptyAware hasData={data.companyOutcomes.length > 0}>
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={data.companyOutcomes}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis dataKey="company" tick={{ fontSize: 11 }} interval={0} />
+              <YAxis allowDecimals={false} />
+              <Tooltip />
+              <Legend />
+              <Bar dataKey="active" stackId="a" fill="#4f46e5" radius={[6, 6, 0, 0]} />
+              <Bar dataKey="selected" stackId="a" fill="#10b981" radius={[6, 6, 0, 0]} />
+              <Bar dataKey="rejected" stackId="a" fill="#f43f5e" radius={[6, 6, 0, 0]} />
+              <Bar dataKey="dropped" stackId="a" fill="#f59e0b" radius={[6, 6, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </EmptyAware>
+      </ChartPanel>
+
+      <ChartPanel title="Student Score Averages">
+        <EmptyAware hasData={data.scoreAverages.some((item) => item.average > 0)}>
+          <ResponsiveContainer width="100%" height={240}>
+            <BarChart data={data.scoreAverages}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis dataKey="metric" tick={{ fontSize: 11 }} />
+              <YAxis allowDecimals />
+              <Tooltip />
+              <Bar dataKey="average" fill="#06b6d4" radius={[6, 6, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </EmptyAware>
+      </ChartPanel>
+
+      <ChartPanel title="Student Placement Status">
+        <PieBlock data={data.studentPlacementStatus} />
+      </ChartPanel>
     </div>
   );
+}
+
+function PieBlock({ data }: { data: Array<{ name: string; value: number }> }) {
+  return (
+    <EmptyAware hasData={hasValueData(data)}>
+      <ResponsiveContainer width="100%" height={250}>
+        <PieChart>
+          <Pie data={data} dataKey="value" nameKey="name" outerRadius={88} label>
+            {data.map((entry, index) => (
+              <Cell key={entry.name} fill={palette[index % palette.length]} />
+            ))}
+          </Pie>
+          <Tooltip />
+          <Legend />
+        </PieChart>
+      </ResponsiveContainer>
+    </EmptyAware>
+  );
+}
+
+function EmptyAware({
+  hasData,
+  children,
+}: {
+  hasData: boolean;
+  children: React.ReactNode;
+}) {
+  if (!hasData) {
+    return (
+      <div className="flex h-[250px] items-center justify-center rounded-[8px] border border-dashed border-slate-200 bg-slate-50 text-sm font-semibold text-slate-500">
+        No sheet data available for this chart yet.
+      </div>
+    );
+  }
+
+  return children;
 }
 
 function ChartPanel({
@@ -176,4 +164,12 @@ function ChartPanel({
       {children}
     </section>
   );
+}
+
+function hasValueData(data: Array<{ value: number }>) {
+  return data.some((item) => item.value > 0);
+}
+
+function hasCountData(data: Array<{ count: number }>) {
+  return data.some((item) => item.count > 0);
 }
