@@ -526,16 +526,50 @@ export async function syncRsaRemarksToSheet(input: {
 }
 
 function getServiceAccountFromEnv(): ServiceAccountConfig {
+  const errors: string[] = [];
   const path = process.env.GOOGLE_SERVICE_ACCOUNT_JSON_PATH?.trim();
 
   if (path) {
-    return getServiceAccountFromJsonPath(path);
+    const fromPath = getServiceAccountFromJsonPath(path);
+
+    if (isUsableServiceAccount(fromPath)) {
+      return fromPath;
+    }
+
+    if (fromPath.error) {
+      errors.push(fromPath.error);
+    }
   }
 
   const json = process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim();
 
   if (json) {
-    return parseServiceAccountJson(json);
+    const fromJson = parseServiceAccountJson(json, "GOOGLE_SERVICE_ACCOUNT_JSON");
+
+    if (isUsableServiceAccount(fromJson)) {
+      return fromJson;
+    }
+
+    if (fromJson.error) {
+      errors.push(fromJson.error);
+    }
+  }
+
+  const encodedJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON_BASE64?.trim();
+
+  if (encodedJson) {
+    const fromEncodedJson = parseServiceAccountJson(
+      Buffer.from(encodedJson, "base64").toString("utf8"),
+      "GOOGLE_SERVICE_ACCOUNT_JSON_BASE64",
+    );
+
+    if (isUsableServiceAccount(fromEncodedJson)) {
+      return fromEncodedJson;
+    }
+
+    if (fromEncodedJson.error) {
+      errors.push(fromEncodedJson.error);
+    }
   }
 
   const privateKey = normalizePrivateKey(
@@ -549,10 +583,24 @@ function getServiceAccountFromEnv(): ServiceAccountConfig {
     };
   }
 
+  const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
+
+  if (clientEmail && privateKey.value) {
+    return {
+      clientEmail,
+      privateKey: privateKey.value,
+    };
+  }
+
   return {
-    clientEmail: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+    clientEmail,
     privateKey: privateKey.value,
+    error: errors[0],
   };
+}
+
+function isUsableServiceAccount(config: ServiceAccountConfig) {
+  return Boolean(config.clientEmail && config.privateKey && !config.error);
 }
 
 function getServiceAccountFromJsonPath(path: string): ServiceAccountConfig {
@@ -561,7 +609,7 @@ function getServiceAccountFromJsonPath(path: string): ServiceAccountConfig {
       return { error: `Google service account JSON file was not found: ${path}` };
     }
 
-    return parseServiceAccountJson(readFileSync(path, "utf8"));
+    return parseServiceAccountJson(readFileSync(path, "utf8"), "GOOGLE_SERVICE_ACCOUNT_JSON_PATH");
   } catch (error) {
     return {
       error:
@@ -572,7 +620,10 @@ function getServiceAccountFromJsonPath(path: string): ServiceAccountConfig {
   }
 }
 
-function parseServiceAccountJson(value: string): ServiceAccountConfig {
+function parseServiceAccountJson(
+  value: string,
+  source = "GOOGLE_SERVICE_ACCOUNT_JSON",
+): ServiceAccountConfig {
   try {
     const parsed = JSON.parse(value) as {
       client_email?: string;
@@ -593,7 +644,7 @@ function parseServiceAccountJson(value: string): ServiceAccountConfig {
       privateKey: privateKey.value,
     };
   } catch {
-    return { error: "GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON." };
+    return { error: `${source} is not valid JSON.` };
   }
 }
 

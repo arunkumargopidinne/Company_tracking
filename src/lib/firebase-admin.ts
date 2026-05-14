@@ -44,25 +44,35 @@ function getFirebaseAdminApp() {
 }
 
 function getFirebaseServiceAccount(): FirebaseServiceAccount | null {
-  const jsonPath = process.env.FIREBASE_SERVICE_ACCOUNT_JSON_PATH;
+  const jsonPath = process.env.FIREBASE_SERVICE_ACCOUNT_JSON_PATH?.trim();
 
   if (jsonPath && existsSync(jsonPath)) {
-    try {
-      const parsed = JSON.parse(readFileSync(jsonPath, "utf8")) as {
-        project_id?: string;
-        client_email?: string;
-        private_key?: string;
-      };
+    const account = parseFirebaseServiceAccount(readFileSync(jsonPath, "utf8"));
 
-      if (parsed.project_id && parsed.client_email && parsed.private_key) {
-        return {
-          projectId: parsed.project_id,
-          clientEmail: parsed.client_email,
-          privateKey: normalizePrivateKey(parsed.private_key),
-        };
-      }
-    } catch {
-      return null;
+    if (account) {
+      return account;
+    }
+  }
+
+  const json = process.env.FIREBASE_SERVICE_ACCOUNT_JSON?.trim();
+
+  if (json) {
+    const account = parseFirebaseServiceAccount(json);
+
+    if (account) {
+      return account;
+    }
+  }
+
+  const encodedJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON_BASE64?.trim();
+
+  if (encodedJson) {
+    const account = parseFirebaseServiceAccount(
+      Buffer.from(encodedJson, "base64").toString("utf8"),
+    );
+
+    if (account) {
+      return account;
     }
   }
 
@@ -79,6 +89,28 @@ function getFirebaseServiceAccount(): FirebaseServiceAccount | null {
     clientEmail,
     privateKey: normalizePrivateKey(privateKey),
   };
+}
+
+function parseFirebaseServiceAccount(value: string): FirebaseServiceAccount | null {
+  try {
+    const parsed = JSON.parse(value) as {
+      project_id?: string;
+      client_email?: string;
+      private_key?: string;
+    };
+
+    if (!parsed.project_id || !parsed.client_email || !parsed.private_key) {
+      return null;
+    }
+
+    return {
+      projectId: parsed.project_id,
+      clientEmail: parsed.client_email,
+      privateKey: normalizePrivateKey(parsed.private_key),
+    };
+  } catch {
+    return null;
+  }
 }
 
 function normalizePrivateKey(privateKey: string) {
