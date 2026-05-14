@@ -28,22 +28,42 @@ export const authOptions: NextAuthOptions = {
         }
 
         if (!hasDatabaseUrl()) {
-          return authorizeFallbackSuperadmin(credentials.login, credentials.password);
+          const fallbackUser = authorizeFallbackSuperadmin(
+            credentials.login,
+            credentials.password,
+          );
+
+          if (fallbackUser) {
+            return fallbackUser;
+          }
+
+          throw new Error("DATABASE_URL_NOT_CONFIGURED");
         }
 
-        await ensureBootstrapSuperadmin();
-
         const login = credentials.login.trim();
-        const user = await prisma.user.findFirst({
-          where: {
-            OR: [
-              { email: { equals: login, mode: "insensitive" } },
-              { userCode: { equals: login, mode: "insensitive" } },
-            ],
-          },
-        });
+        let user;
 
-        if (!user || user.authProvider !== AuthProvider.CREDENTIALS) {
+        try {
+          await ensureBootstrapSuperadmin();
+
+          user = await prisma.user.findFirst({
+            where: {
+              OR: [
+                { email: { equals: login, mode: "insensitive" } },
+                { userCode: { equals: login, mode: "insensitive" } },
+              ],
+            },
+          });
+        } catch (error) {
+          console.error("[Auth] Database login lookup failed.", error);
+          throw new Error("DATABASE_CONNECTION_FAILED");
+        }
+
+        if (!user) {
+          throw new Error("LOGIN_USER_NOT_FOUND");
+        }
+
+        if (user.authProvider !== AuthProvider.CREDENTIALS) {
           return null;
         }
 

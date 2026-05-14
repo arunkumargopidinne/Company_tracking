@@ -6,7 +6,7 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 const adapter = new PrismaPg({
-  connectionString: process.env.DATABASE_URL ?? "",
+  connectionString: getDatabaseUrl() ?? "",
 });
 
 export const prisma =
@@ -21,7 +21,7 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 export function hasDatabaseUrl() {
-  const url = process.env.DATABASE_URL;
+  const url = getDatabaseUrl();
 
   if (!url) return false;
 
@@ -39,4 +39,25 @@ export function hasDatabaseUrl() {
   } catch {
     return false;
   }
+}
+
+export function getDatabaseUrl() {
+  return normalizeEnvValue(process.env.DATABASE_URL);
+}
+
+function normalizeEnvValue(value?: string) {
+  const trimmed = value?.trim();
+
+  if (!trimmed) {
+    return "";
+  }
+
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1).trim();
+  }
+
+  return trimmed;
 }

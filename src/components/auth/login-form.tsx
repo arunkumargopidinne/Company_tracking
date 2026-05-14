@@ -158,6 +158,15 @@ export function LoginForm() {
 function loginErrorMessage(error: string | null) {
   if (!error) return "";
   if (error === "CredentialsSignin") return "Invalid login details.";
+  if (error.includes("DATABASE_URL_NOT_CONFIGURED")) {
+    return "The deployed app is not connected to the database. Set DATABASE_URL in Vercel.";
+  }
+  if (error.includes("DATABASE_CONNECTION_FAILED")) {
+    return "The deployed app could not connect to the database. Check the Vercel DATABASE_URL.";
+  }
+  if (error.includes("LOGIN_USER_NOT_FOUND")) {
+    return "This approved user was not found in the deployed database. Check that Vercel uses the same Neon DATABASE_URL as localhost.";
+  }
   if (error.includes("ACCOUNT_PENDING")) return "Your account is waiting for superadmin approval.";
   if (error.includes("ACCOUNT_DISABLED") || error === "disabled") {
     return "This account is disabled. Contact superadmin.";
